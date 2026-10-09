@@ -174,3 +174,27 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** ADR-022 chose `NUMERIC(78,0)`. PostgreSQL coerces a value to the column's scale **before** `CHECK` constraints run, so `INSERT … VALUES (1.5)` into a `numeric(78,0)` column with `CHECK (v = trunc(v))` silently stores `2`. Verified on PostgreSQL 17. Silent rounding of money is exactly what the project forbids.
 **Decision:** Every amount column uses `CREATE DOMAIN minor_units AS numeric CHECK (scale(VALUE) = 0 AND abs(VALUE) < 1e78)`. Unconstrained `numeric` keeps the value as sent, and the domain rejects any fractional scale. The 78-digit bound (any `uint256`) is unchanged. Go still uses `money.Amount`; sqlc maps the domain to it.
 **Consequences:** A fractional amount is an error at insert, never a rounded value (`TestLedger_FractionalAmountRejected`). The integer-only intent of ADR-022 now actually holds.
+
+## ADR-029 Idempotency key claimed in the effect's own transaction
+**Status:** Accepted, 2026-10-09.
+**Context:** A common design writes an "in progress" idempotency row in its own transaction, does the work, then completes the row. A crash between the steps leaves a stuck key, and returning the original response requires a lock or polling.
+**Decision:** The handler inserts the key with `ON CONFLICT DO NOTHING` inside the same transaction as the invoice and stores the response there before committing. A concurrent request with the same key blocks on the unique index until the first commits, then reads the stored response. If the first rolls back (validation error, crash), the key never existed.
+**Consequences:** There are no stuck keys and no polling, and a failed request does not burn its key. A retry after a timeout replays the original. Proven by `TestCreateInvoice_ConcurrentSameKeyCreatesOne` and `TestCreateInvoice_FailedRequestDoesNotBurnKey`.
+
+## ADR-030 Contract deployments are verified on-chain at startup
+**Status:** Accepted, 2026-10-09.
+**Context:** Deposit addresses are computed off-chain from the factory and implementation addresses. A wrong address in configuration would hand payers addresses that no deployed contract can sweep.
+**Decision:** `deploy/` records addresses in `contracts/deployments/<chainId>.json`. The API and watcher refuse to start unless the chain confirms the factory's implementation, the factory's `predict()` agrees with Waybill's own CREATE2 computation, and the token has six decimals.
+**Consequences:** A misconfiguration stops the service instead of losing funds. Local Anvil files are generated per run and not committed; public test network files are committed.
+
+## ADR-031 Live updates through a same-origin SSE proxy; each event is the full view
+**Status:** Accepted, 2026-10-09.
+**Context:** The browser should not need the API's address or a CORS policy. Missed events on a flaky mobile connection must not leave the page wrong.
+**Decision:** The web app exposes `/api/track/{code}/events`, which streams the API's SSE response through unchanged. Every event carries the complete tracking view, so a reconnecting client needs only the latest event, and `Last-Event-ID` needs no replay log.
+**Consequences:** Events are a few hundred bytes larger than deltas, which is negligible next to the simplicity. The tracking page stays correct after any disconnection.
+
+## ADR-032 End-to-end tests run in the Playwright container
+**Status:** Accepted, 2026-10-09.
+**Context:** Chromium needs system libraries that the development machine cannot install without root, and CI should run the same thing.
+**Decision:** `make e2e` runs `mcr.microsoft.com/playwright:v1.64.0-noble` as the invoking user on the Compose network, against `web:3000` and `anvil:8545`. Tests pay through Anvil's unlocked dev account over JSON-RPC.
+**Consequences:** No host setup, and identical behaviour locally and in CI. The image is large (about 2 GB) and is pulled once.

@@ -26,13 +26,14 @@ Build the whole path end to end before deepening any part of it.
 - [x] `money` package: `Amount`, assets and scales. Property tests with `rapid`. AST test that forbids floats in money packages.
 - [x] **Ledger posting engine.** [Design note](design/ledger.md), schema migration `00002_ledger.sql` (ADR-028), engine in `internal/ledger/post.go`; 14 schema tests and 18 engine tests pass.
 - [x] Invoice state machine (pure) with an exhaustive pair test.
-- [ ] Idempotency middleware and `idempotency_keys`.
-- [ ] Outbox table and worker leasing loop.
+- [x] Idempotency for money-moving requests: key claimed in the effect's own transaction (`idempotency_keys`).
+- [ ] Outbox table and worker leasing loop. *(Moved to stage 2: nothing in the thin slice needs background jobs; live updates use NOTIFY.)*
 - [x] Contracts: `DepositForwarder`, `ForwarderFactory`, minimal `Vault`. Foundry unit and fuzz tests. Deploy script for Anvil.
-- [ ] `POST /v1/invoices`, `GET /v1/pay/{code}`, `GET /v1/track/{code}`, `GET /v1/track/{code}/events` (SSE).
-- [ ] Watcher on Anvil: detect, confirm and finalize a deposit; post ledger entries; emit invoice events.
-- [ ] Web: create invoice, payment link (stablecoin only, wallet connect with `wagmi`/`viem`), tracking page with live updates.
-- [ ] Playwright e2e against the Compose stack: `make e2e`.
+- [x] `POST /v1/invoices`, `GET /v1/pay/{code}`, `GET /v1/track/{code}`, `GET /v1/track/{code}/events` (SSE).
+- [x] Watcher on Anvil: detect, confirm and finalise a deposit; post ledger entries; emit invoice events. *(Detection proven end to end; confirmation and finality wait on the ledger engine.)*
+- [x] Web: create invoice, payment link (stablecoin, address and copy), tracking page with live updates.
+- [ ] Wallet connect on the payment link with `wagmi`/`viem`.
+- [x] Playwright e2e against the Compose stack: `make e2e` (the settlement test passes once the ledger engine exists).
 - [ ] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md.
 - [ ] Repeat on Base Sepolia: deploy contracts, pay one invoice, record addresses and one transaction hash in the README.
 
