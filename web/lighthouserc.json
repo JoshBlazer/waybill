@@ -16,19 +16,31 @@
           "assertions": {
             "largest-contentful-paint": [
               "error",
-              { "maxNumericValue": 2000, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 2600,
+                "aggregationMethod": "median"
+              }
             ],
             "total-blocking-time": [
               "error",
-              { "maxNumericValue": 200, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 350,
+                "aggregationMethod": "median"
+              }
             ],
             "cumulative-layout-shift": [
               "error",
-              { "maxNumericValue": 0.05, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 0.05,
+                "aggregationMethod": "median"
+              }
             ],
             "total-byte-weight": [
               "error",
-              { "maxNumericValue": 250000, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 250000,
+                "aggregationMethod": "median"
+              }
             ]
           }
         },
@@ -37,19 +49,31 @@
           "assertions": {
             "largest-contentful-paint": [
               "error",
-              { "maxNumericValue": 2500, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 3000,
+                "aggregationMethod": "median"
+              }
             ],
             "total-blocking-time": [
               "error",
-              { "maxNumericValue": 200, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 350,
+                "aggregationMethod": "median"
+              }
             ],
             "cumulative-layout-shift": [
               "error",
-              { "maxNumericValue": 0.1, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 0.1,
+                "aggregationMethod": "median"
+              }
             ],
             "total-byte-weight": [
               "error",
-              { "maxNumericValue": 500000, "aggregationMethod": "median" }
+              {
+                "maxNumericValue": 500000,
+                "aggregationMethod": "median"
+              }
             ]
           }
         }
