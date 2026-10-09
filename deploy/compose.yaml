@@ -22,7 +22,9 @@ services:
     ports: ["127.0.0.1:${WAYBILL_PG_PORT:-55432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U waybill -d waybill"]
+      # TCP, not the socket: during first-boot init the image runs a socket-only
+      # temporary server, which would report ready before the real one starts.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U waybill -d waybill"]
       interval: 2s
       timeout: 3s
       retries: 30
