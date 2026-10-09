@@ -18,7 +18,8 @@ linters:
   settings:
     misspell:
       locale: UK
-      ignore-rules: [color, behavior]
+      # "finalize" is the Ethereum term (the `finalized` block tag).
+      ignore-rules: [color, behavior, finalize, finalized, finalizes, finalizing]
     revive:
       rules:
         - name: exported

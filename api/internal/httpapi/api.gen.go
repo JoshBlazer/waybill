@@ -10,8 +10,46 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for CreateInvoiceRequestAsset.
+const (
+	USDC CreateInvoiceRequestAsset = "USDC"
+)
+
+// Valid indicates whether the value is a known member of the CreateInvoiceRequestAsset enum.
+func (e CreateInvoiceRequestAsset) Valid() bool {
+	switch e {
+	case USDC:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateInvoiceRequestPayout.
+const (
+	CreateInvoiceRequestPayoutHold  CreateInvoiceRequestPayout = "hold"
+	CreateInvoiceRequestPayoutNaira CreateInvoiceRequestPayout = "naira"
+)
+
+// Valid indicates whether the value is a known member of the CreateInvoiceRequestPayout enum.
+func (e CreateInvoiceRequestPayout) Valid() bool {
+	switch e {
+	case CreateInvoiceRequestPayoutHold:
+		return true
+	case CreateInvoiceRequestPayoutNaira:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for HealthDatabase.
 const (
@@ -49,6 +87,162 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for InvoicePayout.
+const (
+	InvoicePayoutHold  InvoicePayout = "hold"
+	InvoicePayoutNaira InvoicePayout = "naira"
+)
+
+// Valid indicates whether the value is a known member of the InvoicePayout enum.
+func (e InvoicePayout) Valid() bool {
+	switch e {
+	case InvoicePayoutHold:
+		return true
+	case InvoicePayoutNaira:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoiceState.
+const (
+	InvoiceStateCancelled InvoiceState = "cancelled"
+	InvoiceStateConfirmed InvoiceState = "confirmed"
+	InvoiceStateExpired   InvoiceState = "expired"
+	InvoiceStateOpen      InvoiceState = "open"
+	InvoiceStateOverpaid  InvoiceState = "overpaid"
+	InvoiceStateReceived  InvoiceState = "received"
+	InvoiceStateSettled   InvoiceState = "settled"
+	InvoiceStateUnderpaid InvoiceState = "underpaid"
+)
+
+// Valid indicates whether the value is a known member of the InvoiceState enum.
+func (e InvoiceState) Valid() bool {
+	switch e {
+	case InvoiceStateCancelled:
+		return true
+	case InvoiceStateConfirmed:
+		return true
+	case InvoiceStateExpired:
+		return true
+	case InvoiceStateOpen:
+		return true
+	case InvoiceStateOverpaid:
+		return true
+	case InvoiceStateReceived:
+		return true
+	case InvoiceStateSettled:
+		return true
+	case InvoiceStateUnderpaid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrackingStepStatus.
+const (
+	Checking TrackingStepStatus = "checking"
+	Current  TrackingStepStatus = "current"
+	Done     TrackingStepStatus = "done"
+	Skipped  TrackingStepStatus = "skipped"
+	Waiting  TrackingStepStatus = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the TrackingStepStatus enum.
+func (e TrackingStepStatus) Valid() bool {
+	switch e {
+	case Checking:
+		return true
+	case Current:
+		return true
+	case Done:
+		return true
+	case Skipped:
+		return true
+	case Waiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrackingStepStep.
+const (
+	TrackingStepStepConfirmed  TrackingStepStep = "confirmed"
+	TrackingStepStepConverted  TrackingStepStep = "converted"
+	TrackingStepStepReceived   TrackingStepStep = "received"
+	TrackingStepStepSentToBank TrackingStepStep = "sent_to_bank"
+)
+
+// Valid indicates whether the value is a known member of the TrackingStepStep enum.
+func (e TrackingStepStep) Valid() bool {
+	switch e {
+	case TrackingStepStepConfirmed:
+		return true
+	case TrackingStepStepConverted:
+		return true
+	case TrackingStepStepReceived:
+		return true
+	case TrackingStepStepSentToBank:
+		return true
+	default:
+		return false
+	}
+}
+
+// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+type Amount struct {
+	// Asset Example: USDC
+	Asset string `json:"asset"`
+
+	// Minor Minor units as a base-10 integer string.
+	//
+	// Example: 125500000
+	Minor string `json:"minor"`
+
+	// Scale Example: 6
+	Scale int `json:"scale"`
+}
+
+// CreateInvoiceRequest defines model for CreateInvoiceRequest.
+type CreateInvoiceRequest struct {
+	// Amount Major units as a decimal string, at most the asset's scale in decimals.
+	//
+	// Example: 125.50
+	Amount string                    `json:"amount"`
+	Asset  CreateInvoiceRequestAsset `json:"asset"`
+
+	// Description Example: Design work, September
+	Description string `json:"description"`
+
+	// Payout `hold` keeps the stablecoin in the contractor's balance. `naira`
+	// converts and sends to the bank, and is accepted from stage 3; until
+	// then it returns 422.
+	Payout CreateInvoiceRequestPayout `json:"payout"`
+}
+
+// CreateInvoiceRequestAsset defines model for CreateInvoiceRequest.Asset.
+type CreateInvoiceRequestAsset string
+
+// CreateInvoiceRequestPayout `hold` keeps the stablecoin in the contractor's balance. `naira`
+// converts and sends to the bank, and is accepted from stage 3; until
+// then it returns 422.
+type CreateInvoiceRequestPayout string
+
+// DepositAddress defines model for DepositAddress.
+type DepositAddress struct {
+	// Address EIP-55 checksummed. Unique to this invoice and network.
+	Address string `json:"address"`
+
+	// Network Example: evm:84532
+	Network string `json:"network"`
+
+	// Token The only token contract accepted at this address.
+	Token string `json:"token"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Database HealthDatabase `json:"database"`
@@ -72,11 +266,127 @@ type HealthDatabase string
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Invoice defines model for Invoice.
+type Invoice struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount           Amount             `json:"amount"`
+	CreatedAt        time.Time          `json:"createdAt"`
+	DepositAddresses []DepositAddress   `json:"depositAddresses"`
+	Description      string             `json:"description"`
+	ExpiresAt        time.Time          `json:"expiresAt"`
+	Id               openapi_types.UUID `json:"id"`
+	PayUrl           string             `json:"payUrl"`
+	Payout           InvoicePayout      `json:"payout"`
+	State            InvoiceState       `json:"state"`
+	TrackUrl         string             `json:"trackUrl"`
+
+	// TrackingCode Example: WB-7KQ4-M2XD-9PRA-3HNC
+	TrackingCode string `json:"trackingCode"`
+}
+
+// InvoicePayout defines model for Invoice.Payout.
+type InvoicePayout string
+
+// InvoiceState defines model for InvoiceState.
+type InvoiceState string
+
+// PaymentLink defines model for PaymentLink.
+type PaymentLink struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount Amount `json:"amount"`
+
+	// ContractorName The contractor's legal name, shown before any address.
+	ContractorName   string           `json:"contractorName"`
+	DepositAddresses []DepositAddress `json:"depositAddresses"`
+	Description      string           `json:"description"`
+	ExpiresAt        time.Time        `json:"expiresAt"`
+	State            InvoiceState     `json:"state"`
+	TrackingCode     string           `json:"trackingCode"`
+
+	// Verified True when the name has been verified against the contractor's bank account.
+	Verified bool `json:"verified"`
+}
+
+// Problem defines model for Problem.
+type Problem struct {
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+	Status   int     `json:"status"`
+	Title    string  `json:"title"`
+
+	// Type A URI reference identifying the problem type.
+	//
+	// Example: https://waybill.dev/problems/validation
+	Type string `json:"type"`
+}
+
+// Tracking defines model for Tracking.
+type Tracking struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount         Amount         `json:"amount"`
+	ContractorName string         `json:"contractorName"`
+	InvoiceState   InvoiceState   `json:"invoiceState"`
+	Steps          []TrackingStep `json:"steps"`
+	TrackingCode   string         `json:"trackingCode"`
+	UpdatedAt      time.Time      `json:"updatedAt"`
+}
+
+// TrackingStep defines model for TrackingStep.
+type TrackingStep struct {
+	At *time.Time `json:"at,omitempty"`
+
+	// Status `checking` means Waybill could not find out yet; it is never
+	// shown as a failure. `skipped` is used for converted and
+	// sent_to_bank when the contractor keeps the stablecoin.
+	Status TrackingStepStatus `json:"status"`
+	Step   TrackingStepStep   `json:"step"`
+}
+
+// TrackingStepStatus `checking` means Waybill could not find out yet; it is never
+// shown as a failure. `skipped` is used for converted and
+// sent_to_bank when the contractor keeps the stablecoin.
+type TrackingStepStatus string
+
+// TrackingStepStep defines model for TrackingStep.Step.
+type TrackingStepStep string
+
+// IdempotencyKey defines model for IdempotencyKey.
+type IdempotencyKey = string
+
+// TrackingCode defines model for TrackingCode.
+type TrackingCode = string
+
+// CreateInvoiceParams defines parameters for CreateInvoice.
+type CreateInvoiceParams struct {
+	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// StreamTrackingParams defines parameters for StreamTracking.
+type StreamTrackingParams struct {
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
+type CreateInvoiceJSONRequestBody = CreateInvoiceRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// CreateInvoice Create an invoice and its payment link.
+	// (POST /v1/invoices)
+	CreateInvoice(w http.ResponseWriter, r *http.Request, params CreateInvoiceParams)
+	// GetPayment What a payer sees when opening a payment link.
+	// (GET /v1/pay/{code})
+	GetPayment(w http.ResponseWriter, r *http.Request, code TrackingCode)
+	// GetTracking The four-step tracking view of a payment.
+	// (GET /v1/track/{code})
+	GetTracking(w http.ResponseWriter, r *http.Request, code TrackingCode)
+	// StreamTracking Live tracking updates as Server-Sent Events.
+	// (GET /v1/track/{code}/events)
+	StreamTracking(w http.ResponseWriter, r *http.Request, code TrackingCode, params StreamTrackingParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -93,6 +403,153 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvoice operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateInvoiceParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvoice(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPayment operation middleware
+func (siw *ServerInterfaceWrapper) GetPayment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code TrackingCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPayment(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTracking operation middleware
+func (siw *ServerInterfaceWrapper) GetTracking(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code TrackingCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTracking(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamTracking operation middleware
+func (siw *ServerInterfaceWrapper) StreamTracking(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code TrackingCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamTrackingParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamTracking(w, r, code, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -223,9 +680,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/invoices", wrapper.CreateInvoice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/pay/{code}", wrapper.GetPayment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/track/{code}", wrapper.GetTracking)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/track/{code}/events", wrapper.StreamTracking)
 
 	return m
 }
+
+type ProblemApplicationProblemPlusJSONResponse Problem
 
 type GetHealthRequestObject struct {
 }
@@ -262,11 +725,248 @@ func (response GetHealth503JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type CreateInvoiceRequestObject struct {
+	Params CreateInvoiceParams
+	Body   *CreateInvoiceJSONRequestBody
+}
+
+type CreateInvoiceResponseObject interface {
+	VisitCreateInvoiceResponse(w http.ResponseWriter) error
+}
+
+type CreateInvoice201JSONResponse Invoice
+
+func (response CreateInvoice201JSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvoice400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateInvoice400ApplicationProblemPlusJSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvoice401ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateInvoice401ApplicationProblemPlusJSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvoice409ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateInvoice409ApplicationProblemPlusJSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvoice422ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateInvoice422ApplicationProblemPlusJSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPaymentRequestObject struct {
+	Code TrackingCode `json:"code"`
+}
+
+type GetPaymentResponseObject interface {
+	VisitGetPaymentResponse(w http.ResponseWriter) error
+}
+
+type GetPayment200JSONResponse PaymentLink
+
+func (response GetPayment200JSONResponse) VisitGetPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPayment404ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPayment404ApplicationProblemPlusJSONResponse) VisitGetPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackingRequestObject struct {
+	Code TrackingCode `json:"code"`
+}
+
+type GetTrackingResponseObject interface {
+	VisitGetTrackingResponse(w http.ResponseWriter) error
+}
+
+type GetTracking200JSONResponse Tracking
+
+func (response GetTracking200JSONResponse) VisitGetTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTracking404ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetTracking404ApplicationProblemPlusJSONResponse) VisitGetTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamTrackingRequestObject struct {
+	Code   TrackingCode `json:"code"`
+	Params StreamTrackingParams
+}
+
+type StreamTrackingResponseObject interface {
+	VisitStreamTrackingResponse(w http.ResponseWriter) error
+}
+
+type StreamTracking200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response StreamTracking200TexteventStreamResponse) VisitStreamTrackingResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type StreamTracking404ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response StreamTracking404ApplicationProblemPlusJSONResponse) VisitStreamTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// CreateInvoice Create an invoice and its payment link.
+	// (POST /v1/invoices)
+	CreateInvoice(ctx context.Context, request CreateInvoiceRequestObject) (CreateInvoiceResponseObject, error)
+	// GetPayment What a payer sees when opening a payment link.
+	// (GET /v1/pay/{code})
+	GetPayment(ctx context.Context, request GetPaymentRequestObject) (GetPaymentResponseObject, error)
+	// GetTracking The four-step tracking view of a payment.
+	// (GET /v1/track/{code})
+	GetTracking(ctx context.Context, request GetTrackingRequestObject) (GetTrackingResponseObject, error)
+	// StreamTracking Live tracking updates as Server-Sent Events.
+	// (GET /v1/track/{code}/events)
+	StreamTracking(ctx context.Context, request StreamTrackingRequestObject) (StreamTrackingResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -325,6 +1025,118 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInvoice operation middleware
+func (sh *strictHandler) CreateInvoice(w http.ResponseWriter, r *http.Request, params CreateInvoiceParams) {
+	var request CreateInvoiceRequestObject
+
+	request.Params = params
+
+	var body CreateInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInvoice(ctx, request.(CreateInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInvoiceResponseObject); ok {
+		if err := validResponse.VisitCreateInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPayment operation middleware
+func (sh *strictHandler) GetPayment(w http.ResponseWriter, r *http.Request, code TrackingCode) {
+	var request GetPaymentRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPayment(ctx, request.(GetPaymentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPayment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPaymentResponseObject); ok {
+		if err := validResponse.VisitGetPaymentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTracking operation middleware
+func (sh *strictHandler) GetTracking(w http.ResponseWriter, r *http.Request, code TrackingCode) {
+	var request GetTrackingRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTracking(ctx, request.(GetTrackingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTracking")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackingResponseObject); ok {
+		if err := validResponse.VisitGetTrackingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamTracking operation middleware
+func (sh *strictHandler) StreamTracking(w http.ResponseWriter, r *http.Request, code TrackingCode, params StreamTrackingParams) {
+	var request StreamTrackingRequestObject
+
+	request.Code = code
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamTracking(ctx, request.(StreamTrackingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamTracking")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamTrackingResponseObject); ok {
+		if err := validResponse.VisitStreamTrackingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

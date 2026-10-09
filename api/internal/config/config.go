@@ -24,6 +24,13 @@ type Config struct {
 	PaystackSecretKey string
 	// Version is the build version reported by /v1/health.
 	Version string
+	// DeploymentsDir holds <chainId>.json contract records.
+	DeploymentsDir string
+	// WebURL is the public base URL of the web app (payment and tracking links).
+	WebURL string
+	// DevContractorKey is the API key seed-dev installs for the local demo
+	// contractor. Local stacks only.
+	DevContractorKey string
 }
 
 // Getenv matches os.Getenv so tests can supply their own environment.
@@ -44,6 +51,9 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		Chains:            chains,
 		PaystackSecretKey: getenv("PAYSTACK_SECRET_KEY"),
 		Version:           withDefault(getenv("WAYBILL_VERSION"), "0.1.0-dev"),
+		DeploymentsDir:    withDefault(getenv("WAYBILL_DEPLOYMENTS_DIR"), "../contracts/deployments"),
+		WebURL:            strings.TrimRight(withDefault(getenv("WAYBILL_WEB_URL"), "http://localhost:3000"), "/"),
+		DevContractorKey:  getenv("WAYBILL_DEV_CONTRACTOR_KEY"),
 	}
 	return cfg, nil
 }
@@ -51,6 +61,25 @@ func LoadFrom(getenv Getenv) (Config, error) {
 // Safety returns the part of the configuration the test-money guard checks.
 func (c Config) Safety() safety.Config {
 	return safety.Config{Chains: c.Chains, PaystackSecretKey: c.PaystackSecretKey}
+}
+
+// NetworkIDs lists the configured networks.
+func (c Config) NetworkIDs() []safety.Network {
+	out := make([]safety.Network, len(c.Chains))
+	for i, ch := range c.Chains {
+		out[i] = ch.Network
+	}
+	return out
+}
+
+// RPCURL returns the RPC endpoint configured for n.
+func (c Config) RPCURL(n safety.Network) string {
+	for _, ch := range c.Chains {
+		if ch.Network == n {
+			return ch.RPCURL
+		}
+	}
+	return ""
 }
 
 // Networks lists the configured network identifiers.

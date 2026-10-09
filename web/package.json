@@ -11,14 +11,20 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "gen:api": "openapi-typescript ../openapi/waybill.yaml -o src/lib/api/schema.d.ts && prettier --write src/lib/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../openapi/waybill.yaml -o src/lib/api/schema.d.ts && prettier --write src/lib/api/schema.d.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "viem": "^2.57.4",
+    "wagmi": "^3.7.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
