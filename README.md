@@ -22,6 +22,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | CI on every push | Done | [Actions](../../actions) |
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
+| Ledger schema: double-entry, append-only, overdraft-proof, enforced by PostgreSQL | Ready for review (branch `stage1/ledger-engine`) | 14 database-level tests in `internal/ledger/schema_test.go` |
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | In progress (stage 1) | — |
 | Base Sepolia deployment | Not started (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
@@ -73,8 +74,8 @@ This project is built with an AI coding assistant (Claude Code). Three modules a
 
 | Module | Status |
 |---|---|
-| Ledger posting engine | Not yet written (stage 1) |
+| Ledger posting engine | Design note, signatures and 18 failing tests ready ([design/ledger.md](docs/design/ledger.md)); implementation not yet written |
 | Payout state machine | Not yet written (stage 3) |
 | Transaction manager nonce and fee logic | Not yet written (stage 2) |
 
-Everything else, including this stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.
+To check that its failing tests are correct and satisfiable, the assistant may run them against a throwaway implementation. That code is deleted, never committed and never shown; the committed implementation is the author's. Everything else, including the stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.
