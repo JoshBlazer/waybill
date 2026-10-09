@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: Waybill API
+  version: 0.1.0
+  description: |
+    Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
+    lets contractors receive naira, with every payment trackable.
+    Test networks and provider sandboxes only.
+
+    This file is the contract. Go server types and TypeScript types are
+    generated from it; run `make gen` after editing.
+servers:
+  - url: /
+tags:
+  - name: system
+    description: Service status.
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      tags: [system]
+      summary: Report service health.
+      description: |
+        Returns 200 when the API and its database are reachable, and 503 with
+        the same body when the database is unavailable.
+      responses:
+        "200":
+          description: The service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: The service is running but a dependency is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version, database, networks, testMode]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+          description: Build version of the running binary.
+          example: 0.1.0-dev
+        database:
+          type: string
+          enum: [ok, unavailable]
+        networks:
+          type: array
+          description: Configured networks, each verified as a test network at startup.
+          items:
+            type: string
+            example: evm:31337
+        testMode:
+          type: boolean
+          description: Always true. The service refuses to start otherwise.
