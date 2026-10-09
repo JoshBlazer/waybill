@@ -1,0 +1,10 @@
+# Secret scanning (CI job "secrets"). Extends the default gitleaks rules.
+[extend]
+useDefault = true
+
+# The test-money guard's tests use obviously fake Paystack keys to prove that
+# live keys are rejected. Allow exactly those strings in exactly that file.
+[[allowlists]]
+description = "Fake Paystack keys in guard tests"
+paths = ['''^api/internal/safety/guard_test\.go$''']
+regexes = ['''(sk|pk)_(test|live)_abc123''', '''(?i)sk_test_abc123''']

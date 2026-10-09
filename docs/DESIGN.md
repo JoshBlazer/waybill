@@ -26,7 +26,7 @@ Defined once as CSS custom properties in `web/src/app/globals.css` and exposed t
 | `--delivered` | `#1F6B45` | **Only** for "delivered" (sent to bank, paid in full) | 5.8 : 1 |
 | `--focus` | `#1A1A17` | 3 px focus outline with 2 px `paper` offset | — |
 
-The `delivered` green is the only accent. Errors, warnings and pending states use ink, a distinct stamp shape and words, not a second colour. Contrast ratios are WCAG 2.1 relative-luminance values computed against `--paper`; axe re-checks them in CI from stage 1.
+The `delivered` green is the only accent. Errors, warnings and pending states use ink, a distinct stamp shape and words, not a second colour (ADR-025). An invalid form field gets a 3 px ink left rule, a "!" glyph and its message directly below, linked by `aria-describedby`. This is more noticeable on paper than a thin red outline, and it reads the same for colour-blind users and in greyscale print. Contrast ratios are WCAG 2.1 relative-luminance values computed against `--paper`; axe re-checks them in CI from stage 1.
 
 Dark mode *(stage 6)*: "carbon copy". `--paper` becomes `#16150F`, `--ink` becomes `#ECE8DD`, and `--delivered` becomes `#5FBF8A`. Contrast is re-verified before release.
 

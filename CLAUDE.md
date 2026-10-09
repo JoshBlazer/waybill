@@ -14,6 +14,7 @@ All commands run inside WSL Ubuntu from `~/waybill`.
 | `make test` | Go tests (incl. testcontainers), Foundry tests, Vitest |
 | `make lint` | golangci-lint, `forge fmt --check`, ESLint, `tsc`, Prettier, codegen drift check |
 | `make gen` | Regenerate Go server types, sqlc code and TS types from `openapi/` and `api/db/` |
+| `make secrets` | gitleaks over the full git history (allowlist in `.gitleaks.toml`) |
 | `make e2e` | Playwright end to end (stage 1; fails until then) |
 | `make help` | List every target |
 

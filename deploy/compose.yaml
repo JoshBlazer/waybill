@@ -79,11 +79,10 @@ services:
       api: { condition: service_healthy }
     mem_limit: 512m
 
-  # Opt-in: `docker compose --profile bitcoin up`. Placeholder for stage 5;
-  # the image tag is confirmed when Bitcoin support is built.
+  # Opt-in: `docker compose --profile bitcoin up`. Used from stage 5.
   bitcoind:
     profiles: [bitcoin]
-    image: bitcoin/bitcoin:29
+    image: bitcoin/bitcoin:29.4
     command: ["-regtest=1", "-server=1", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=waybill", "-rpcpassword=waybill-local-only", "-fallbackfee=0.0002"]
     ports: ["127.0.0.1:18443:18443"]
     mem_limit: 512m

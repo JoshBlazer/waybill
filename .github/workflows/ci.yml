@@ -66,6 +66,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Audit production dependencies (dev-only advisory accepted in ADR-026)
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run format:check
@@ -89,6 +91,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: make check-gen
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # scan every commit, not only the tip
+      - run: make secrets
 
   stack:
     name: compose smoke test

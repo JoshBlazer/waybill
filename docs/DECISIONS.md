@@ -150,3 +150,21 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** Docker bind mounts, `node_modules` and Go builds are much slower on `/mnt/c`.
 **Decision:** The repository lives at `~/waybill` inside WSL Ubuntu, and all commands run there.
 **Consequences:** Windows editors open it through `\\wsl.localhost\Ubuntu\home\…` or a WSL remote.
+
+## ADR-025 No error colour; one accent only
+**Status:** Accepted, 2026-10-09.
+**Context:** The design reserves one accent colour for "delivered". Errors conventionally use red, which would add a second accent and make colour carry meaning.
+**Decision:** No red. Errors are shown with ink, the `PROBLEM` stamp shape, a "!" glyph, a thick left rule on invalid fields, and plain words.
+**Consequences:** Status never depends on colour perception (WCAG 1.4.1), and print and greyscale keep their meaning. Green on screen always means "delivered". If usability testing shows errors are missed, this record is superseded rather than quietly changed.
+
+## ADR-026 Accept the ESLint `braces` advisory as a development-only risk
+**Status:** Accepted, 2026-10-09.
+**Context:** `npm audit` reports five high-severity findings, all from `braces` (GHSA-vfj7-8cjw-p6xm, a denial of service through deeply nested glob patterns). They reach the project through `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch`. The advisory covers every published version, and npm's only offered fix is downgrading to the Next.js 14 ESLint config.
+**Decision:** Accept it. The package runs only at lint time, on glob patterns written in this repository, and never ships to users.
+**Consequences:** `npm audit` is not a CI gate for now. This record is revisited when a fixed `braces` or plugin release exists; the check is `npm audit --omit=dev`, which must stay clean.
+
+## ADR-027 Secret scanning with gitleaks in CI
+**Status:** Accepted, 2026-10-09.
+**Context:** "No secrets in the repository" needs a check, not only a `.gitignore`.
+**Decision:** `make secrets` runs the gitleaks container (`ghcr.io/gitleaks/gitleaks:v8.30.1`) over the full git history with the default rules plus `.gitleaks.toml`. The allowlist names exact fake strings in exact files, never whole rules. CI runs it in the `secrets` job. It is a CI tool only, not a code dependency.
+**Consequences:** A committed secret fails CI even when later removed from the tip, because history is scanned. A real leak still requires rotating the key; the scan only detects it.

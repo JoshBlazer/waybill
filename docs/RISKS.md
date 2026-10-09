@@ -11,7 +11,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | A service is pointed at a mainnet chain. | Chain allowlist checked at startup. | `TestCheck_RejectsNonTestChains` *(exists)* |
 | Config says testnet but the RPC URL is a mainnet node. | Live `eth_chainId` must match config, and failing to answer fails closed. | `TestCheck_LiveChainIDMismatch`, `TestCheck_RPCUnreachableFailsClosed` *(exist)* |
 | A live Paystack key is configured. | Key must begin with `sk_test_`. | `TestCheck_RejectsLivePaystackKey` *(exists)* |
-| Secrets are committed. | `.env` is git-ignored; only `.env.example` is tracked. Secret scanning with `gitleaks` in CI *(stage 1)*. | CI job *(stage 1)* |
+| Secrets are committed. | `.env` is git-ignored; only `.env.example` is tracked. `gitleaks` scans every commit in CI; fake keys in tests are allowlisted by exact string. | CI job `secrets`, `make secrets` *(exists)* |
 
 ## 2. Paying the wrong person
 

@@ -6,12 +6,13 @@ SHELL := /usr/bin/env bash
 COMPOSE := docker compose -f deploy/compose.yaml
 GOLANGCI_LINT_VERSION := v2.14.0
 GOLANGCI_LINT := bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
+GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1
 
 # Files produced by `make gen`. CI fails if they differ from what is committed.
 GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/schema.d.ts
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
-        lint-contracts lint-web check-gen e2e setup
+        lint-contracts lint-web check-gen e2e setup secrets
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -78,6 +79,9 @@ e2e: ## End-to-end tests (stage 1)
 # --- Lint ----------------------------------------------------------------------
 
 lint: lint-api lint-contracts lint-web check-gen ## Run every linter and the codegen drift check
+
+secrets: ## Scan every commit for secrets (gitleaks, needs Docker)
+	docker run --rm -v "$(CURDIR):/repo" $(GITLEAKS_IMAGE) git /repo --no-banner --redact --config /repo/.gitleaks.toml
 
 lint-api: $(GOLANGCI_LINT)
 	cd api && go vet ./... && ../$(GOLANGCI_LINT) run ./...
