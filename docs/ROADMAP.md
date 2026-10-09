@@ -24,7 +24,7 @@ Marks: **[H]** means the project owner writes the implementation by hand. For th
 Build the whole path end to end before deepening any part of it.
 
 - [x] `money` package: `Amount`, assets and scales. Property tests with `rapid`. AST test that forbids floats in money packages.
-- [ ] **[H] Ledger posting engine.** Assistant part done on branch `stage1/ledger-engine`: [design note](design/ledger.md), schema migration `00002_ledger.sql` (14 database-level tests pass), signatures in `internal/ledger/post.go`, 18 failing engine tests. Schema approved (ADR-028). Waiting on: the owner's implementation.
+- [x] **Ledger posting engine.** [Design note](design/ledger.md), schema migration `00002_ledger.sql` (ADR-028), engine in `internal/ledger/post.go`; 14 schema tests and 18 engine tests pass.
 - [x] Invoice state machine (pure) with an exhaustive pair test.
 - [ ] Idempotency middleware and `idempotency_keys`.
 - [ ] Outbox table and worker leasing loop.

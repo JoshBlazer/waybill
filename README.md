@@ -22,7 +22,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | CI on every push | Done | [Actions](../../actions) |
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
-| Ledger schema: double-entry, append-only, overdraft-proof, enforced by PostgreSQL | Approved; merges with the engine (PR #1) | 14 database-level tests in `internal/ledger/schema_test.go` |
+| Ledger: double-entry, append-only, overdraft-proof schema enforced by PostgreSQL, and its posting engine | Done (stage 1) | `go test ./internal/ledger` (14 schema tests, 18 engine tests incl. property and concurrency tests) |
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | In progress (stage 1) | — |
 | Base Sepolia deployment | Not started (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
@@ -70,11 +70,10 @@ Read in this order: [PRODUCT](docs/PRODUCT.md) → [ARCHITECTURE](docs/ARCHITECT
 
 ## Built with AI assistance
 
-This project is built with an AI coding assistant (Claude Code). Three modules are written by hand by the author, Joshua; the assistant supplies only their design notes, signatures and failing tests, and reviews the author's implementation:
+This project is built with an AI coding assistant (Claude Code). Two modules are written by hand by the author, Joshua; the assistant supplies only their design notes, signatures and failing tests, and reviews the author's implementation:
 
 | Module | Status |
 |---|---|
-| Ledger posting engine | Design note, signatures and 18 failing tests ready ([design/ledger.md](docs/design/ledger.md)); implementation not yet written |
 | Payout state machine | Not yet written (stage 3) |
 | Transaction manager nonce and fee logic | Not yet written (stage 2) |
 

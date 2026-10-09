@@ -1,9 +1,8 @@
 # Design note: the ledger posting engine
 
-**Status:** schema and tests ready; engine to be hand-written by the project owner.
-**Code:** `api/db/migrations/00002_ledger.sql`, `api/internal/ledger/`.
-**You implement:** `Entry.Validate`, `Post`, `Reverse` in `api/internal/ledger/post.go`.
-**Done means:** `go test ./internal/ledger/` passes (14 schema tests pass already; 18 engine tests fail until the engine exists).
+**Status:** implemented.
+**Code:** `api/db/migrations/00002_ledger.sql`, `api/internal/ledger/` (engine: `post.go`).
+**Done means:** `go test ./internal/ledger/` passes: 14 schema tests and 18 engine tests.
 
 ## 1. What the ledger is for
 
