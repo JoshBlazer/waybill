@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ServiceStatus } from "@/components/ServiceStatus";
@@ -31,6 +32,11 @@ export default function Home() {
           bank. Every payment is trackable like a parcel.
         </p>
         <p className="text-ink-muted">Test money only. Nothing here is real.</p>
+        <p>
+          <Link href="/invoices/new" className="font-semibold underline">
+            Create a test invoice
+          </Link>
+        </p>
       </header>
 
       <section
