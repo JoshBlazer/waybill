@@ -94,6 +94,7 @@ async function TrackingContent({
 function TrackingSkeleton() {
   return (
     <div
+      role="status"
       aria-busy="true"
       aria-label="Loading payment"
       className="flex flex-col gap-6"

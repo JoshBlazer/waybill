@@ -15,7 +15,16 @@ export default function NewInvoicePage() {
         <p className="text-sm text-ink-muted">Demo contractor: Adaeze Okafor</p>
         <h1 className="text-2xl font-semibold">New invoice</h1>
       </header>
-      <Suspense fallback={<div aria-busy="true" className="h-64 bg-rule/40" />}>
+      <Suspense
+        fallback={
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Loading the form"
+            className="h-64 bg-rule/40"
+          />
+        }
+      >
         <FreshForm />
       </Suspense>
       <p className="text-sm text-ink-muted">

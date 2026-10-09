@@ -36,6 +36,7 @@ export default function PayPage({ params }: PageProps<"/pay/[code]">) {
       <Suspense
         fallback={
           <div
+            role="status"
             aria-busy="true"
             aria-label="Loading payment link"
             className="h-96 bg-rule/40"

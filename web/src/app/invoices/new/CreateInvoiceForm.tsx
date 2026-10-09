@@ -21,6 +21,8 @@ export function CreateInvoiceForm({
   const resultRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
 
+  const values = state.status === "error" ? state.values : undefined;
+
   useEffect(() => {
     if (state.status === "created") resultRef.current?.focus();
     if (state.status === "error") errorRef.current?.focus();
@@ -90,6 +92,7 @@ export function CreateInvoiceForm({
           name="description"
           required
           maxLength={500}
+          defaultValue={values?.description}
           className="min-h-11 border border-ink bg-paper-raised px-3"
           placeholder=""
         />
@@ -108,6 +111,7 @@ export function CreateInvoiceForm({
           inputMode="decimal"
           pattern="^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$"
           aria-describedby="amount-hint"
+          defaultValue={values?.amount}
           className="min-h-11 border border-ink bg-paper-raised px-3 font-mono"
         />
       </div>
