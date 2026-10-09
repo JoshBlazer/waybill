@@ -26,3 +26,6 @@ next-env.d.ts
 .DS_Store
 .idea/
 .vscode/
+
+# rapid saves failing cases locally; they are not fixtures
+testdata/rapid/
