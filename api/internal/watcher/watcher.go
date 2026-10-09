@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,9 +49,13 @@ type Config struct {
 	Token         common.Address
 	Asset         money.Asset
 	Confirmations uint64 // blocks (including the payment's) before "confirmed"
-	Finality      uint64 // blocks before "final"
-	BatchBlocks   uint64 // max blocks per log query
-	PollInterval  time.Duration
+	// Finality: when FinalizedTag is set, a payment is final once its block
+	// is at or below the chain's "finalized" block (real networks). Otherwise
+	// it is final at Finality blocks deep (Anvil, which has no consensus).
+	FinalizedTag bool
+	Finality     uint64
+	BatchBlocks  uint64 // max blocks per log query
+	PollInterval time.Duration
 }
 
 // Watcher follows one network.
@@ -68,7 +73,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 	defer t.Stop()
 	for {
 		if err := w.Tick(ctx); err != nil && ctx.Err() == nil {
-			w.Log.Warn("watcher: tick failed; will retry", "network", w.Cfg.Network, "err", err)
+			w.Log.Warn("watcher: tick failed; will retry", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -206,6 +211,26 @@ func (w *Watcher) advance(ctx context.Context, head uint64) error {
 	if err != nil {
 		return err
 	}
+	if len(open) == 0 {
+		return nil
+	}
+	finalized := uint64(0)
+	haveFinalized := false
+	if w.Cfg.FinalizedTag {
+		h, err := w.Chain.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+		if err == nil {
+			finalized, haveFinalized = h.Number.Uint64(), true
+		} else {
+			// Unknown finality is not finality: confirm as usual, finalise nothing.
+			w.Log.Warn("watcher: could not read finalized block", "err", err)
+		}
+	}
+	isFinal := func(block, depth uint64) bool {
+		if w.Cfg.FinalizedTag {
+			return haveFinalized && block <= finalized
+		}
+		return depth >= w.Cfg.Finality
+	}
 	for _, p := range open {
 		depth := head - uint64(p.BlockNumber) + 1 //nolint:gosec // block numbers are non-negative
 		switch {
@@ -217,7 +242,7 @@ func (w *Watcher) advance(ctx context.Context, head uint64) error {
 			if err := pgx.BeginFunc(ctx, w.Pool, func(tx pgx.Tx) error { return w.confirm(ctx, tx, p) }); err != nil {
 				return fmt.Errorf("confirm %s: %w", p.ID, err)
 			}
-		case p.State == "confirmed" && depth >= w.Cfg.Finality:
+		case p.State == "confirmed" && isFinal(uint64(p.BlockNumber), depth): //nolint:gosec // non-negative
 			if err := w.stillCanonical(ctx, p); err != nil {
 				w.Log.Warn("watcher: not finalizing", "payment", p.ID, "err", err)
 				continue

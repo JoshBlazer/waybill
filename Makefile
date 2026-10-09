@@ -35,14 +35,21 @@ $(GOLANGCI_LINT):
 
 # --- Local stack ---------------------------------------------------------------
 
-up: ## Build and start the local stack; waits until every service is healthy
+# A random demo-contractor API key per machine, never committed.
+deploy/.env:
+	@umask 077; printf 'WAYBILL_DEV_CONTRACTOR_KEY=wb_test_%s_%s\n' \
+		"$$(LC_ALL=C tr -dc '0-9a-z' </dev/urandom | head -c 8)" \
+		"$$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 52)" > $@
+	@echo "Generated $@ with a local demo API key."
+
+up: deploy/.env contracts/lib/forge-std/src ## Build and start the local stack; waits until every service is healthy
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
 
-down: ## Stop the local stack and delete its volumes
+down: deploy/.env ## Stop the local stack and delete its volumes
 	$(COMPOSE) down --volumes --remove-orphans
 
-logs: ## Follow logs from the local stack
+logs: deploy/.env ## Follow logs from the local stack
 	$(COMPOSE) logs --follow
 
 # --- Code generation -----------------------------------------------------------

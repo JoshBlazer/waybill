@@ -43,15 +43,16 @@ var (
 // fakeChain is an in-memory chain. Each block's header carries a
 // "version" in Extra, so replacing a block changes its hash.
 type fakeChain struct {
-	mu       sync.Mutex
-	head     uint64
-	versions map[uint64]byte
-	logs     []types.Log
-	failHead bool
-	failLogs bool
+	mu        sync.Mutex
+	head      uint64
+	versions  map[uint64]byte
+	logs      []types.Log
+	failHead  bool
+	failLogs  bool
+	finalized int64 // -1: the node cannot say
 }
 
-func newFakeChain() *fakeChain { return &fakeChain{versions: map[uint64]byte{}} }
+func newFakeChain() *fakeChain { return &fakeChain{versions: map[uint64]byte{}, finalized: -1} }
 
 func (c *fakeChain) header(n uint64) *types.Header {
 	return &types.Header{Number: new(big.Int).SetUint64(n), Extra: []byte{c.versions[n]}, Difficulty: big.NewInt(0)}
@@ -69,6 +70,12 @@ func (c *fakeChain) BlockNumber(context.Context) (uint64, error) {
 func (c *fakeChain) HeaderByNumber(_ context.Context, n *big.Int) (*types.Header, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if n.Sign() < 0 { // the "finalized" tag
+		if c.finalized < 0 {
+			return nil, errors.New("rpc: finalized block not available")
+		}
+		return c.header(uint64(c.finalized)), nil
+	}
 	return c.header(n.Uint64()), nil
 }
 
@@ -316,5 +323,38 @@ func TestWatcher_ConfirmsAndSettles(t *testing.T) {
 		if !v.IsZero() {
 			t.Fatalf("trial balance %s = %s", a, v)
 		}
+	}
+}
+
+// TestWatcher_FinalizedTagUnknownFinalisesNothing: with FinalizedTag set,
+// depth alone never finalises, and when the node cannot report its
+// finalized block nothing is finalised ("couldn't find out" is not "yes").
+func TestWatcher_FinalizedTagUnknownFinalisesNothing(t *testing.T) {
+	r := setup(t)
+	r.w.Cfg.FinalizedTag = true
+	ctx := context.Background()
+	r.chain.transfer(5, token, r.dep, 100_000_000, 0)
+	r.chain.head = 6 // detected, not yet confirmed
+	if err := r.w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Stand in for an earlier confirmation, so this test does not depend on
+	// the ledger engine; only the finality decision is under test.
+	if _, err := r.pool.Exec(ctx, `UPDATE payments SET state = 'confirmed', confirmed_at = now()`); err != nil {
+		t.Fatal(err)
+	}
+	r.chain.head = 500 // very deep, but the node reports no finalized block
+	if err := r.w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ps := r.state(t); ps["final"] != 0 || ps["confirmed"] != 1 {
+		t.Fatalf("payments %v; nothing may be final while finality is unknown", ps)
+	}
+	r.chain.finalized = 4 // finalized, but below the payment's block 5
+	if err := r.w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ps := r.state(t); ps["final"] != 0 {
+		t.Fatalf("payments %v; block 5 is above the finalized block 4", ps)
 	}
 }
