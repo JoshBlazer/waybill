@@ -8,3 +8,11 @@ useDefault = true
 description = "Fake Paystack keys in guard tests"
 paths = ['''^api/internal/safety/guard_test\.go$''']
 regexes = ['''(sk|pk)_(test|live)_abc123''', '''(?i)sk_test_abc123''']
+
+# EVM addresses (20 bytes, 40 hex characters) are public identifiers, but
+# JSON keys such as "token" make the generic rule treat them as secrets.
+# Anchored to the whole match, so a 64-hex private key is never allowed.
+[[allowlists]]
+description = "Public EVM addresses"
+regexTarget = "secret"
+regexes = ['''^0x[0-9a-fA-F]{40}$''']
