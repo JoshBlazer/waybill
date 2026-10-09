@@ -12,7 +12,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 
 | Area | Status | Proof |
 |---|---|---|
-| Product, architecture, design, roadmap, decisions, risks documents | Done (stage 0) | [docs/](docs/) |
+| **Stage 0 — Foundations** (exit check passed 2026-10-09) | Done | [walkthrough](docs/walkthroughs/stage-0.md) |
+| Product, architecture, design, roadmap, decisions, risks documents | Done | [docs/](docs/) |
 | Test-money guard: chain allowlist, live chain-ID check, Paystack test-key check | Done | `make test-api` → `api/internal/safety` |
 | OpenAPI contract (`GET /v1/health`), generated Go and TypeScript types, drift check | Done | `make check-gen` |
 | Database migrations (goose; schema empty) against real PostgreSQL | Done | `make test-api` → `TestMigrate_AgainstRealPostgres` |
@@ -46,6 +47,7 @@ make down
 
 - API health: <http://localhost:8080/v1/health>
 - Web: <http://localhost:3000>
+- PostgreSQL: `localhost:55432`; Anvil: `localhost:8545`. Host ports are overridable (see `deploy/compose.yaml`).
 
 Configuration is documented in [`.env.example`](.env.example). No secrets are stored in the repository.
 

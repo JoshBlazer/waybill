@@ -6,16 +6,18 @@ Marks: **[H]** means the project owner writes the implementation by hand. For th
 
 ## Stage 0 — Foundations
 
-- [ ] Product, architecture, design, roadmap, decisions and risks documents; `CLAUDE.md`; README with status table.
-- [ ] Monorepo scaffold: `api/` (Go), `web/` (Next.js), `contracts/` (Foundry), `openapi/`, `deploy/`, `Makefile`.
-- [ ] Test-money guard (`api/internal/safety`) with tests: chain allowlist, live chain-ID check, Paystack `sk_test_` check.
-- [ ] OpenAPI contract with `GET /v1/health`; generated Go server types and TypeScript types; codegen drift check.
-- [ ] Empty first goose migration, applied in an integration test against real PostgreSQL (testcontainers).
-- [ ] One passing test in each codebase.
-- [ ] Compose stack: PostgreSQL, Anvil, migrate, API, web.
-- [ ] GitHub Actions CI on every push.
+- [x] Product, architecture, design, roadmap, decisions and risks documents; `CLAUDE.md`; README with status table.
+- [x] Monorepo scaffold: `api/` (Go), `web/` (Next.js), `contracts/` (Foundry), `openapi/`, `deploy/`, `Makefile`.
+- [x] Test-money guard (`api/internal/safety`) with tests: chain allowlist, live chain-ID check, Paystack `sk_test_` check.
+- [x] OpenAPI contract with `GET /v1/health`; generated Go server types and TypeScript types; codegen drift check.
+- [x] Empty first goose migration, applied in an integration test against real PostgreSQL (testcontainers).
+- [x] One passing test in each codebase.
+- [x] Compose stack: PostgreSQL, Anvil, migrate, API, web.
+- [x] GitHub Actions CI on every push.
 
 **Exit check:** a fresh clone passes `make up`, `make test` and `make lint`, and CI is green.
+
+**Result (2026-10-09): passed.** Fresh clone of `1728ea2` in `/tmp/waybill-fresh`: `make up`, `make test`, `make lint` all exit 0, `curl /v1/health` returns 200, and the working tree stays clean. CI run 37875145536: all five jobs green. See [walkthroughs/stage-0.md](walkthroughs/stage-0.md).
 
 ## Stage 1 — Thin slice
 
