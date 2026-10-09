@@ -5,6 +5,7 @@ import { Stamp } from "@/components/Stamp";
 import { apiBaseUrl, fetchPaymentLink } from "@/lib/api/client";
 import { formatAmountWithAsset } from "@/lib/money";
 import { CopyButton } from "./CopyButton";
+import { WalletPayButton } from "./WalletPayButton";
 
 export const metadata: Metadata = {
   title: "Pay an invoice · Waybill",
@@ -168,6 +169,14 @@ async function PayContent({ params }: { params: Promise<{ code: string }> }) {
                 on this network. Anything else sent here cannot be credited
                 automatically.
               </p>
+              <WalletPayButton
+                network={d.network}
+                token={d.token}
+                depositAddress={d.address}
+                minor={p.amount.minor}
+                displayAmount={formatAmountWithAsset(p.amount)}
+                trackingCode={p.trackingCode}
+              />
             </div>
           ))}
           <Link href={`/t/${p.trackingCode}`} className="underline">

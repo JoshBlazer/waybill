@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { payWithToken } from "./chain";
+import { browserRpcUrl, mintTo, payWithToken, walletPayer } from "./chain";
+import { installTestWallet } from "./wallet";
 
 // The stage 1 thin slice, end to end, through the real stack: a contractor
 // creates an invoice; a payer opens the link and pays mock USDC to the
@@ -81,4 +82,36 @@ test("the paid invoice becomes final and is shown as paid in full", async ({
     page.getByText("The payment is final and can't be undone."),
   ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("img", { name: /paid in full/ })).toBeVisible();
+});
+
+// A payer with a browser wallet pays in three clicks: connect, send, track.
+// Independent of the ledger engine: it stops at "received".
+test("a payer pays from a browser wallet", async ({ page }) => {
+  await installTestWallet(page, browserRpcUrl(), walletPayer);
+
+  await page.goto("/invoices/new");
+  await page.getByLabel("What is it for?").fill("E2E: wallet payment");
+  await page.getByLabel("Amount in USDC").fill("7.5");
+  await page.getByRole("button", { name: "Create invoice" }).click();
+  await page.getByRole("link", { name: "Open payment link" }).click();
+
+  const token = (
+    await page
+      .locator("text=Send only the test USDC token")
+      .locator("span.font-mono")
+      .first()
+      .innerText()
+  ).trim();
+  await mintTo(token, walletPayer, BigInt(7_500_000));
+
+  await page.getByRole("button", { name: "Pay with a browser wallet" }).click();
+  await page.getByRole("button", { name: "Connect wallet" }).click();
+  await expect(page.getByText(walletPayer, { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Send 7.50 USDC" }).click();
+  await expect(page.getByText("Sent from your wallet.")).toBeVisible();
+  // The send button is gone: a second click cannot pay twice.
+  await expect(page.getByRole("button", { name: /^Send / })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Track the payment" }).last().click();
+  await expect(page.getByText("We received the payment.")).toBeVisible();
 });

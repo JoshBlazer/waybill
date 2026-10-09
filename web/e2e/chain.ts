@@ -58,3 +58,15 @@ export async function payWithToken(
   await send(token, MINT + word(payer) + uint(amount));
   await send(token, TRANSFER + word(depositAddress) + uint(amount));
 }
+
+/** Anvil dev account #2, used as a browser-wallet payer. */
+export const walletPayer = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+
+/** Mint test tokens to an account (minting is open on the mock token). */
+export async function mintTo(token: string, account: string, amount: bigint) {
+  await send(token, MINT + word(account) + uint(amount));
+}
+
+export function browserRpcUrl(): string {
+  return rpcUrl();
+}
