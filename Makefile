@@ -79,9 +79,14 @@ test-contracts: contracts/lib/forge-std/src ## Foundry tests
 test-web: web/node_modules ## Vitest unit tests
 	cd web && npm test
 
-e2e: ## End-to-end tests (stage 1)
-	@echo "make e2e: not implemented yet; it arrives with the stage 1 thin slice (docs/ROADMAP.md)." >&2
-	@exit 2
+PLAYWRIGHT_IMAGE := mcr.microsoft.com/playwright:v1.64.0-noble
+
+e2e: web/node_modules ## End-to-end tests against the running stack (run make up first)
+	docker run --rm --init --ipc=host --network waybill_default \
+		--user "$$(id -u):$$(id -g)" -e HOME=/tmp \
+		-v "$(CURDIR)/web:/web" -w /web \
+		-e E2E_BASE_URL=http://web:3000 -e E2E_RPC_URL=http://anvil:8545 \
+		$(PLAYWRIGHT_IMAGE) npx playwright test
 
 # --- Lint ----------------------------------------------------------------------
 

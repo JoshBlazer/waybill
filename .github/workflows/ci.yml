@@ -102,17 +102,33 @@ jobs:
       - run: make secrets
 
   stack:
-    name: compose smoke test
+    name: compose stack and end-to-end
     runs-on: ubuntu-latest
-    needs: [api, web]
+    needs: [api, web, contracts]
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive # the contracts container deploys from source
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: make up
       - name: API health
         run: curl --fail --silent --show-error http://localhost:8080/v1/health
       - name: Web reaches API
         # The status block streams in only after the web server fetched /v1/health.
         run: curl --fail --silent --show-error http://localhost:3000/ | grep -q "The Waybill service is running."
+      - name: End-to-end (Playwright, mobile profile)
+        run: make e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: web/test-results/
+          retention-days: 7
       - name: Logs on failure
         if: failure()
         run: docker compose -f deploy/compose.yaml logs
