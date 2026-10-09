@@ -1,0 +1,8 @@
+# Generates api.gen.go from openapi/waybill.yaml. Run via `make gen`.
+package: httpapi
+output: api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: false

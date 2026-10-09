@@ -1,0 +1,43 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - nolintlint
+    - revive
+    - sloglint
+    - unconvert
+  settings:
+    misspell:
+      locale: UK
+      ignore-rules: [color, behavior]
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+    gosec:
+      excludes:
+        - G104 # covered by errcheck
+  exclusions:
+    generated: strict
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx, bodyclose]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/JoshBlazer/waybill
