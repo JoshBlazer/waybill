@@ -30,10 +30,10 @@ Build the whole path end to end before deepening any part of it.
 - [ ] Outbox table and worker leasing loop. *(Moved to stage 2: nothing in the thin slice needs background jobs; live updates use NOTIFY.)*
 - [x] Contracts: `DepositForwarder`, `ForwarderFactory`, minimal `Vault`. Foundry unit and fuzz tests. Deploy script for Anvil.
 - [x] `POST /v1/invoices`, `GET /v1/pay/{code}`, `GET /v1/track/{code}`, `GET /v1/track/{code}/events` (SSE).
-- [x] Watcher on Anvil: detect, confirm and finalise a deposit; post ledger entries; emit invoice events. *(Detection proven end to end; confirmation and finality wait on the ledger engine.)*
+- [x] Watcher on Anvil: detect, confirm and finalise a deposit; post ledger entries; emit invoice events.
 - [x] Web: create invoice, payment link (stablecoin, address and copy), tracking page with live updates.
 - [x] Wallet connect on the payment link with `wagmi`/`viem`, loaded only after the payer chooses it.
-- [x] Playwright e2e against the Compose stack: `make e2e` (the settlement test passes once the ledger engine exists).
+- [x] Playwright e2e against the Compose stack: `make e2e`.
 - [x] JavaScript budget check in CI (`make budget`, ADR-033).
 - [ ] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md. *(Tooling awaits owner approval.)*
 - [ ] Repeat on Base Sepolia: deploy contracts, pay one invoice, record addresses and one transaction hash in the README.
