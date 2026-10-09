@@ -221,7 +221,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff` *(stage 2)* |
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce` *(stage 3)* |
 | I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `secret.String` redacts in `String()`/`LogValue()`; `Signer` interface; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(stage 1)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
-| I16 | **On-chain payout is at most once per payout id.** | `BatchPayout` records `paid[payoutId]` and reverts on reuse | `test_RevertWhen_PayoutIdReused`, invariant test `invariant_VaultOutflowEqualsRecordedPayouts` *(stage 2)* |
+| I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant test `invariant_VaultOutflowEqualsRecordedPayouts` *(stage 2)* |
 | I17 | **Approver ≠ creator for runs over threshold.** | SQL `CHECK` plus API check | `TestBatch_SelfApprovalRejected` *(stage 4)* |
 | I18 | **Reserves ≥ liabilities.** | Reconciliation job; proof-of-reserves page | `TestReconcile_DetectsShortfall` *(stage 4)* |
 | I19 | **The API contract cannot drift.** | Generated Go and TS types; `make lint` fails on uncommitted codegen diff | CI job `codegen` *(stage 0, exists)* |
@@ -242,12 +242,15 @@ Each invariant names the test that proves it. A test that does not exist yet car
 
 ## 9. Contracts
 
-| Contract | Purpose |
-|---|---|
-| `MockStablecoin` | 6-decimal ERC-20 for local and testnet work. Public mint on test networks only. |
-| `DepositForwarder` + `ForwarderFactory` | Minimal-proxy (EIP-1167) clone per invoice at `CREATE2(salt = keccak(invoiceId))`. The address is known before deployment. `deployAndSweep` moves the balance to the vault in one transaction. |
-| `Vault` | Holds swept funds. OpenZeppelin `AccessControl` roles (`SWEEPER`, `PAYOUT`, `PAUSER`, `ADMIN`), per-transaction and daily limits, `Pausable`. |
-| `BatchPayout` | Pays N recipients from the vault in one transaction, emits one event per payout id, and rejects a reused payout id. |
+| Contract | Purpose | Status |
+|---|---|---|
+| `MockStablecoin` | 6-decimal ERC-20 for local and testnet work. Anyone may mint, but deployment and minting revert outside chain ids 31337, 84532 and 11155111. | Built |
+| `DepositForwarder` | Implementation behind every deposit address. `vault` and `factory` are immutables in its code, so EIP-1167 clones need no initialiser and nothing in a clone's storage can redirect funds. `sweep(token)` moves the full balance to the vault, factory only. | Built |
+| `ForwarderFactory` | `predict(salt)` gives the CREATE2 address before deployment, with `salt = keccak256(invoiceId)`. `deployAndSweep(salt, token)` (`SWEEPER_ROLE` only) deploys the clone if needed and sweeps it. Events are emitted before any state-changing external call, and the sweep must move exactly the announced amount (`SweepMismatch`). | Built |
+| `Vault` | `AccessControl` roles (`PAYOUT`, `PAUSER`, admin), per-token per-transaction and per-UTC-day limits, `Pausable`. Limits fail closed: a token with no limits cannot be paid out. Only the admin can unpause. `payout(token, to, amount, payoutId)` rejects a reused payout id, so a payout id moves money at most once regardless of the caller (I16). | Built (stage 2 adds invariant tests) |
+| `BatchPayout` | Pays N recipients from the vault in one transaction, one event per payout id. | Stage 2 |
+
+Deployment: `contracts/script/Deploy.s.sol` deploys the token, vault and factory and grants the broadcaster every operational role. That is acceptable on test networks only.
 
 ## 10. Test-money guard
 

@@ -17,7 +17,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Test-money guard: chain allowlist, live chain-ID check, Paystack test-key check | Done | `make test-api` → `api/internal/safety` |
 | OpenAPI contract (`GET /v1/health`), generated Go and TypeScript types, drift check | Done | `make check-gen` |
 | Database migrations (goose; schema empty) against real PostgreSQL | Done | `make test-api` → `TestMigrate_AgainstRealPostgres` |
-| Mock 6-decimal stablecoin | Done | `make test-contracts` |
+| Contracts: mock stablecoin, CREATE2 deposit forwarders and factory, vault with limits and pause | Done (stage 1) | `make test-contracts` (25 tests, fuzzed) |
 | Local stack: PostgreSQL, Anvil, API, web | Done | `make up` |
 | CI on every push | Done | [Actions](../../actions) |
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |

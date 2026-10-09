@@ -28,7 +28,7 @@ Build the whole path end to end before deepening any part of it.
 - [x] Invoice state machine (pure) with an exhaustive pair test.
 - [ ] Idempotency middleware and `idempotency_keys`.
 - [ ] Outbox table and worker leasing loop.
-- [ ] Contracts: `DepositForwarder`, `ForwarderFactory`, minimal `Vault`. Foundry unit and fuzz tests. Deploy script for Anvil.
+- [x] Contracts: `DepositForwarder`, `ForwarderFactory`, minimal `Vault`. Foundry unit and fuzz tests. Deploy script for Anvil.
 - [ ] `POST /v1/invoices`, `GET /v1/pay/{code}`, `GET /v1/track/{code}`, `GET /v1/track/{code}/events` (SSE).
 - [ ] Watcher on Anvil: detect, confirm and finalize a deposit; post ledger entries; emit invoice events.
 - [ ] Web: create invoice, payment link (stablecoin only, wallet connect with `wagmi`/`viem`), tracking page with live updates.
