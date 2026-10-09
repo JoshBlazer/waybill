@@ -1,0 +1,90 @@
+# Waybill local stack. Default services stay small enough for a 7 GB WSL2
+# machine (docs/DECISIONS.md ADR-019). Heavier services go behind profiles.
+#
+#   make up    build and start, wait until healthy
+#   make down  stop and remove containers and volumes
+#
+# Every value here is a local-only default for test networks. Real secrets
+# never belong in this file; they come from the environment.
+#
+# Host ports bind to 127.0.0.1 and can be overridden to avoid clashes:
+# WAYBILL_PG_PORT (55432), WAYBILL_ANVIL_PORT (8545), WAYBILL_API_PORT (8080),
+# WAYBILL_WEB_PORT (3000).
+name: waybill
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: waybill
+      POSTGRES_PASSWORD: waybill-local-only
+      POSTGRES_DB: waybill
+    ports: ["127.0.0.1:${WAYBILL_PG_PORT:-55432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waybill -d waybill"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.8.3
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--chain-id", "31337", "--block-time", "2"]
+    ports: ["127.0.0.1:${WAYBILL_ANVIL_PORT:-8545}:8545"]
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 256m
+
+  migrate:
+    build: ../api
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgres://waybill:waybill-local-only@postgres:5432/waybill?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ../api
+    command: ["api"]
+    environment:
+      DATABASE_URL: postgres://waybill:waybill-local-only@postgres:5432/waybill?sslmode=disable
+      HTTP_ADDR: ":8080"
+      WAYBILL_CHAINS: evm:31337=http://anvil:8545
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+    ports: ["127.0.0.1:${WAYBILL_API_PORT:-8080}:8080"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      anvil: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/waybill", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 256m
+
+  web:
+    build: ../web
+    environment:
+      API_INTERNAL_URL: http://api:8080
+    ports: ["127.0.0.1:${WAYBILL_WEB_PORT:-3000}:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 512m
+
+  # Opt-in: `docker compose --profile bitcoin up`. Placeholder for stage 5;
+  # the image tag is confirmed when Bitcoin support is built.
+  bitcoind:
+    profiles: [bitcoin]
+    image: bitcoin/bitcoin:29
+    command: ["-regtest=1", "-server=1", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=waybill", "-rpcpassword=waybill-local-only", "-fallbackfee=0.0002"]
+    ports: ["127.0.0.1:18443:18443"]
+    mem_limit: 512m
+
+volumes:
+  pgdata:

@@ -1,0 +1,28 @@
+# Secrets: only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+# Tools
+/bin/
+
+# Go
+*.test
+*.out
+/api/waybill
+
+# Foundry
+/contracts/out/
+/contracts/cache/
+/contracts/broadcast/*/31337/
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
