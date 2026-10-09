@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Design tokens: docs/DESIGN.md §2. Light ("paper") only until stage 6. */
+:root {
+  --paper: #f6f3ec;
+  --paper-raised: #fbf9f4;
+  --ink: #1a1a17;
+  --ink-muted: #5c5a52;
+  --rule: #d6d0c2;
+  /* The only accent. Reserved for "delivered". */
+  --delivered: #1f6b45;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-delivered: var(--delivered);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --radius-sm: 2px;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Stamp motif: slight rotation, printed at 90% opacity, lands with a short
+   scale-in unless the user prefers reduced motion. */
+.stamp {
+  transform: rotate(-2deg);
+  opacity: 0.9;
+  animation: stamp-land 120ms ease-out;
+}
+
+@keyframes stamp-land {
+  from {
+    transform: rotate(-2deg) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp {
+    animation: none;
+  }
+}
+
+/* Receipt motif: perforated top and bottom edges drawn with a mask. */
+.perforated {
+  --perf: 6px;
+  background: var(--paper-raised);
+  mask:
+    radial-gradient(circle at 50% 0, transparent 3px, #000 3.5px) top / 12px
+      var(--perf) repeat-x,
+    radial-gradient(circle at 50% 100%, transparent 3px, #000 3.5px) bottom /
+      12px var(--perf) repeat-x,
+    linear-gradient(#000 0 0) center / 100% calc(100% - 2 * var(--perf))
+      no-repeat;
+}
