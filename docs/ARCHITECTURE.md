@@ -172,12 +172,14 @@ stateDiagram-v2
 
 `settled` means the funds are final and credited to the contractor. What happens next (conversion, payout) belongs to the payout state machine. The tracking page combines both machines into four steps:
 
-| Tracking step | Driven by |
-|---|---|
-| Received | invoice ∈ {received, underpaid, overpaid, confirmed, settled} |
-| Confirmed | invoice ∈ {confirmed, overpaid, settled} |
-| Converted | payout ≥ `converted` (or "kept as stablecoin") |
-| Sent to bank | payout = `succeeded` |
+| Tracking step | Done when | Current when |
+|---|---|---|
+| Received | a payment has been detected (invoice beyond `open`) | invoice `open`; shows *checking* after a reorg |
+| Confirmed | invoice `settled`: the payment is **final**, safe from being undone | invoice `received`, `underpaid`, `overpaid` or `confirmed` (N confirmations are not finality) |
+| Converted | payout ≥ `converted`; *skipped* when the contractor keeps stablecoin | settled with payout mode `naira` |
+| Sent to bank | payout = `succeeded`; *skipped* when the contractor keeps stablecoin | — |
+
+Implemented in `api/internal/tracking` (`Build`), with every invoice state covered by `TestBuild_EveryInvoiceState`.
 
 ### 5.2 Payout (hand-written by the project owner)
 

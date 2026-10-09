@@ -153,19 +153,6 @@ func TestClassifyConfirmation(t *testing.T) {
 	}
 }
 
-func TestInvoiceTrackingStep(t *testing.T) {
-	want := map[InvoiceState]TrackingStep{
-		InvoiceOpen: StepNone, InvoiceExpired: StepNone, InvoiceCancelled: StepNone,
-		InvoiceReceived: StepReceived, InvoiceUnderpaid: StepReceived,
-		InvoiceConfirmed: StepConfirmed, InvoiceOverpaid: StepConfirmed, InvoiceSettled: StepConfirmed,
-	}
-	for _, s := range InvoiceStates {
-		if got := InvoiceTrackingStep(s); got != want[s] {
-			t.Errorf("InvoiceTrackingStep(%s) = %d, want %d", s, got, want[s])
-		}
-	}
-}
-
 // allowedImports are the only packages a state machine may import. Anything
 // that can perform I/O, read the clock or touch randomness is excluded.
 var allowedImports = map[string]bool{
