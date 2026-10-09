@@ -28,4 +28,4 @@ next-env.d.ts
 .vscode/
 
 # rapid saves failing cases locally; they are not fixtures
-testdata/rapid/
+**/testdata/rapid/
