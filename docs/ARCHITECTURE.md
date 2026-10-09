@@ -99,14 +99,15 @@ sequenceDiagram
 
 ## 4. Data model
 
-All amounts are `NUMERIC(78,0)` in **minor units** of a named asset with a fixed scale. 78 digits hold any `uint256`. A `CHECK` forbids fractional values. Go code uses `money.Amount` (a `big.Int` wrapper paired with an asset), never `float64`.
+All amounts use the `minor_units` domain: whole **minor units** of a named asset with a fixed scale, up to 78 digits (any `uint256`). The domain is unconstrained `numeric` with `CHECK (scale(VALUE) = 0)`, because `numeric(78,0)` would silently round `1.5` to `2` (ADR-028). Go code uses `money.Amount` (an immutable `big.Int` wrapper), never `float64`. The ledger tables are specified in [design/ledger.md](design/ledger.md).
 
 | Table | Key columns | Notes |
 |---|---|---|
 | `assets` | `code` PK, `scale` | `USDC`/6, `USDT`/6, `NGN`/2, `BTC`/8, `ETH`/18. |
 | `chain_assets` | `network`, `contract_address`, `asset_code` | Maps a token on a network to a ledger asset. |
-| `ledger_accounts` | `id`, `code` unique, `asset_code`, `kind` | For example `liability:contractor:{id}:USDC`, `custody:deposit:evm:84532:USDC`. |
-| `journal_entries` | `id`, `kind`, `ref_type`, `ref_id`, `reverses_entry_id`, `created_at` | Append-only. A reversal points at what it reverses. |
+| `ledger_accounts` | `id`, `code` unique, `asset_code`, `kind`, `balance_rule` | Immutable. For example `liability:contractor:{id}:USDC:available`, `custody:deposit:evm_84532:USDC`. `balance_rule` ∈ `non_negative`, `non_positive`, `any`. |
+| `journal_entries` | `id`, `idempotency_key` unique, `kind`, `ref_type`, `ref_id`, `reverses_entry_id` unique, `xact_id` | Append-only. A reversal points at what it reverses and must mirror it exactly. |
+| `ledger_balances` | `account_id`, `balance_rule`, `balance` | Cache of the sum of postings, maintained only by triggers. `CHECK ledger_balance_rule` makes overdrafts impossible. |
 | `postings` | `id`, `entry_id`, `account_id`, `asset_code`, `amount` (signed) | Append-only. A deferred constraint trigger checks that the sum per `(entry_id, asset_code)` is 0 at commit. |
 | `contractors`, `payer_orgs`, `org_members` | | Identity and verification status. Bank details are stored with the verified name. |
 | `invoices` | `id`, `tracking_code` unique, `state`, `amount`, `asset_code`, `payout_mode`, `rate_quote_id`, `expires_at` | `state` changes only through the state machine. |
@@ -207,10 +208,10 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | # | Invariant | Enforced by | Proving test |
 |---|---|---|---|
 | I1 | **Test money only.** Services refuse to start on a non-allowlisted chain, an RPC whose live chain ID differs from config, or a non-test provider key. | `internal/safety.Check` at startup of every subcommand | `TestCheck_*` in `api/internal/safety/guard_test.go` *(stage 0, exists)* |
-| I2 | **Money is integers.** No float type is used for amounts. | `money.Amount`; `NUMERIC(78,0)` with `CHECK (amount = trunc(amount))`; a lint rule forbidding `float32`/`float64` in `money`, `ledger`, `statemachine` | `TestNoFloatsInMoneyPackages` (AST scan), `rapid` properties `TestAmount_ArithmeticRoundTrip`, `TestDecimal_FormatParseRoundTrip`, `TestNumeric_RoundTrip` in `api/internal/money` *(exist)* |
-| I3 | **Entries balance per asset**, enforced by the database. | Deferred constraint trigger on `postings` | `TestLedger_UnbalancedEntryRejectedByDB` (raw SQL bypassing Go) *(stage 1)* |
-| I4 | **Ledger is append-only.** | Trigger rejects `UPDATE`/`DELETE` on `journal_entries` and `postings`; app role lacks those grants | `TestLedger_UpdateAndDeleteRejected` *(stage 1)* |
-| I5 | **Any sequence of postings keeps every entry balanced and the trial balance at zero.** | Posting engine | `rapid` property `TestLedger_TrialBalanceAlwaysZero` *(stage 1)* |
+| I2 | **Money is integers.** No float type is used for amounts. | `money.Amount`; `minor_units` domain rejecting fractional scale; an AST test forbidding float identifiers in `money`, `ledger`, `statemachine` | `TestNoFloatsInMoneyPackages` (AST scan), `rapid` properties `TestAmount_ArithmeticRoundTrip`, `TestDecimal_FormatParseRoundTrip`, `TestNumeric_RoundTrip` in `api/internal/money` *(exist)* |
+| I3 | **Entries balance per asset**, enforced by the database. | Deferred constraint trigger on `postings` | `TestLedger_UnbalancedEntryRejectedByDB`, `TestLedger_BalanceIsPerAsset` (raw SQL bypassing Go) *(exist, branch `stage1/ledger-engine`)* |
+| I4 | **Ledger is append-only.** | Trigger rejects `UPDATE`/`DELETE` on `journal_entries` and `postings`; app role lacks those grants | `TestLedger_UpdateAndDeleteRejected`, `TestLedger_CannotAddPostingsToCommittedEntry`, `TestLedger_BalanceCacheCannotBeWrittenDirectly` *(exist, branch)*; separate app role without UPDATE/DELETE grants *(stage 1)* |
+| I5 | **Any sequence of postings keeps every entry balanced and the trial balance at zero.** | Posting engine | `rapid` property `TestLedger_TrialBalanceAlwaysZero` *(written; fails until the hand-written engine exists)* |
 | I6 | **Money-moving requests are idempotent.** Same key and same body give the same response; same key and a different body give 422. | `idempotency_keys` written in the same tx as the effect | `TestIdempotency_RetryReturnsOriginal`, `TestIdempotency_KeyReuseDifferentBody`, `TestIdempotency_ConcurrentSameKey` *(stage 1)* |
 | I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs` (72 pairs), `TestStatemachine_NoIOImports` in `api/internal/statemachine` *(exist)*; `TestPayout_AllPairs` *(stage 3)* |
 | I8 | **A payment is not final when first seen; reorgs reverse.** | Watcher block-hash chain, `payments` states, reversing entries | `TestWatcher_ReorgReversesConfirmedPayment` (Anvil snapshot/revert via testcontainers) *(stage 2)* |

@@ -3,3 +3,48 @@
 //   sqlc v1.31.1
 
 package store
+
+import (
+	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Asset struct {
+	Code  string
+	Scale int16
+}
+
+type JournalEntry struct {
+	ID              int64
+	IdempotencyKey  string
+	Kind            string
+	RefType         string
+	RefID           string
+	Memo            string
+	ReversesEntryID *int64
+	XactID          pgtype.Uint64
+	CreatedAt       pgtype.Timestamptz
+}
+
+type LedgerAccount struct {
+	ID          int64
+	Code        string
+	AssetCode   string
+	Kind        string
+	BalanceRule string
+	CreatedAt   pgtype.Timestamptz
+}
+
+type LedgerBalance struct {
+	AccountID   int64
+	BalanceRule string
+	Balance     money.Amount
+}
+
+type Posting struct {
+	ID        int64
+	EntryID   int64
+	AccountID int64
+	AssetCode string
+	Amount    money.Amount
+}
