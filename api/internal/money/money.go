@@ -36,6 +36,16 @@ var (
 	ETH  = Asset{Code: "ETH", Scale: 18}
 )
 
+var knownAssets = map[AssetCode]Asset{
+	USDC.Code: USDC, USDT.Code: USDT, NGN.Code: NGN, BTC.Code: BTC, ETH.Code: ETH,
+}
+
+// LookupAsset returns a known asset by code.
+func LookupAsset(code AssetCode) (Asset, bool) {
+	a, ok := knownAssets[code]
+	return a, ok
+}
+
 // MaxDigits bounds amounts to what NUMERIC columns and uint256 hold.
 const MaxDigits = 78
 

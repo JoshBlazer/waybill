@@ -5,13 +5,85 @@
 package store
 
 import (
+	"time"
+
 	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type ApiKey struct {
+	ID           uuid.UUID
+	ContractorID uuid.UUID
+	Prefix       string
+	SecretSha256 []byte
+	CreatedAt    time.Time
+	RevokedAt    *time.Time
+}
 
 type Asset struct {
 	Code  string
 	Scale int16
+}
+
+type ChainCursor struct {
+	Network   string
+	NextBlock int64
+	UpdatedAt time.Time
+}
+
+type ChainToken struct {
+	Network         string
+	ContractAddress string
+	AssetCode       string
+}
+
+type Contractor struct {
+	ID         uuid.UUID
+	LegalName  string
+	VerifiedAt *time.Time
+	CreatedAt  time.Time
+}
+
+type DepositAddress struct {
+	Network   string
+	Address   string
+	InvoiceID uuid.UUID
+	Salt      []byte
+}
+
+type IdempotencyKey struct {
+	Principal    string
+	Key          string
+	RequestHash  []byte
+	StatusCode   *int32
+	ResponseBody []byte
+	CreatedAt    time.Time
+	CompletedAt  *time.Time
+}
+
+type Invoice struct {
+	ID           uuid.UUID
+	ContractorID uuid.UUID
+	TrackingCode string
+	Description  string
+	AssetCode    string
+	Amount       money.Amount
+	PayoutMode   string
+	State        string
+	ExpiresAt    time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type InvoiceEvent struct {
+	ID        int64
+	InvoiceID uuid.UUID
+	Type      string
+	FromState *string
+	ToState   string
+	Data      []byte
+	CreatedAt time.Time
 }
 
 type JournalEntry struct {
@@ -23,7 +95,7 @@ type JournalEntry struct {
 	Memo            string
 	ReversesEntryID *int64
 	XactID          pgtype.Uint64
-	CreatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
 }
 
 type LedgerAccount struct {
@@ -32,13 +104,32 @@ type LedgerAccount struct {
 	AssetCode   string
 	Kind        string
 	BalanceRule string
-	CreatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
 }
 
 type LedgerBalance struct {
 	AccountID   int64
 	BalanceRule string
 	Balance     money.Amount
+}
+
+type Payment struct {
+	ID           uuid.UUID
+	Network      string
+	TxHash       string
+	LogIndex     int32
+	BlockNumber  int64
+	BlockHash    string
+	TokenAddress string
+	FromAddress  string
+	ToAddress    string
+	InvoiceID    uuid.UUID
+	AssetCode    string
+	Amount       money.Amount
+	State        string
+	DetectedAt   time.Time
+	ConfirmedAt  *time.Time
+	FinalAt      *time.Time
 }
 
 type Posting struct {
