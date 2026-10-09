@@ -20,7 +20,9 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Mock 6-decimal stablecoin | Done | `make test-contracts` |
 | Local stack: PostgreSQL, Anvil, API, web | Done | `make up` |
 | CI on every push | Done | [Actions](../../actions) |
-| Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | Not started (stage 1) | — |
+| `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
+| Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
+| Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | In progress (stage 1) | — |
 | Base Sepolia deployment | Not started (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |

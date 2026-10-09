@@ -140,27 +140,34 @@ Both live in `api/internal/statemachine`. Each is a pure function: `Transition(s
 
 ### 5.1 Invoice
 
+Implemented in `api/internal/statemachine/invoice.go` (`InvoiceTransition`).
+
 ```mermaid
 stateDiagram-v2
   [*] --> open
   open --> received: PaymentDetected
-  received --> open: PaymentReorged (before confirmation)
-  received --> confirmed: PaymentConfirmed (amount = due)
-  received --> underpaid: PaymentConfirmed (amount < due)
-  received --> overpaid: PaymentConfirmed (amount > due)
-  underpaid --> received: PaymentDetected (top-up)
-  underpaid --> confirmed: UnderpaymentAccepted
-  confirmed --> received: PaymentReorged
-  overpaid --> received: PaymentReorged
-  underpaid --> open: PaymentReorged
-  confirmed --> settled: PaymentFinal
-  overpaid --> settled: PaymentFinal
   open --> expired: Expire
   open --> cancelled: Cancel
+  received --> received: PaymentDetected (another payment)
+  received --> confirmed: ConfirmedExact
+  received --> underpaid: ConfirmedShort
+  received --> overpaid: ConfirmedOver
+  underpaid --> received: PaymentDetected (top-up)
+  underpaid --> confirmed: UnderpaymentAccepted
+  confirmed --> settled: PaymentFinal
+  overpaid --> settled: PaymentFinal
   expired --> received: PaymentDetected (late; rate re-quoted)
+  received --> open: PaymentReorged
+  underpaid --> open: PaymentReorged
+  confirmed --> open: PaymentReorged
+  overpaid --> open: PaymentReorged
   settled --> [*]
   cancelled --> [*]
 ```
+
+- **Confirmation is classified, not interpreted.** `ClassifyConfirmation(confirmedTotal, due)` picks `ConfirmedExact`, `ConfirmedShort` or `ConfirmedOver`, so the machine itself never does arithmetic.
+- **A reorg always returns to `open`.** The watcher then rescans and replays detection and confirmation events for the payments that are still on the canonical chain. The invoice re-derives its state from what is actually there, instead of the machine guessing which payment vanished. If the invoice was past its expiry, `Expire` is applied again after the replay.
+- **A reorg after `settled` is illegal.** It would mean finality was violated, so it returns `ErrIllegalTransition`, which the caller raises as an alert. Every pair not in the diagram is illegal in the same way.
 
 `settled` means the funds are final and credited to the contractor. What happens next (conversion, payout) belongs to the payout state machine. The tracking page combines both machines into four steps:
 
@@ -200,12 +207,12 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | # | Invariant | Enforced by | Proving test |
 |---|---|---|---|
 | I1 | **Test money only.** Services refuse to start on a non-allowlisted chain, an RPC whose live chain ID differs from config, or a non-test provider key. | `internal/safety.Check` at startup of every subcommand | `TestCheck_*` in `api/internal/safety/guard_test.go` *(stage 0, exists)* |
-| I2 | **Money is integers.** No float type is used for amounts. | `money.Amount`; `NUMERIC(78,0)` with `CHECK (amount = trunc(amount))`; a lint rule forbidding `float32`/`float64` in `money`, `ledger`, `statemachine` | `TestNoFloatsInMoneyPackages` (AST scan) *(stage 1)*; `rapid` property `TestAmount_ArithmeticRoundTrip` *(stage 1)* |
+| I2 | **Money is integers.** No float type is used for amounts. | `money.Amount`; `NUMERIC(78,0)` with `CHECK (amount = trunc(amount))`; a lint rule forbidding `float32`/`float64` in `money`, `ledger`, `statemachine` | `TestNoFloatsInMoneyPackages` (AST scan), `rapid` properties `TestAmount_ArithmeticRoundTrip`, `TestDecimal_FormatParseRoundTrip`, `TestNumeric_RoundTrip` in `api/internal/money` *(exist)* |
 | I3 | **Entries balance per asset**, enforced by the database. | Deferred constraint trigger on `postings` | `TestLedger_UnbalancedEntryRejectedByDB` (raw SQL bypassing Go) *(stage 1)* |
 | I4 | **Ledger is append-only.** | Trigger rejects `UPDATE`/`DELETE` on `journal_entries` and `postings`; app role lacks those grants | `TestLedger_UpdateAndDeleteRejected` *(stage 1)* |
 | I5 | **Any sequence of postings keeps every entry balanced and the trial balance at zero.** | Posting engine | `rapid` property `TestLedger_TrialBalanceAlwaysZero` *(stage 1)* |
 | I6 | **Money-moving requests are idempotent.** Same key and same body give the same response; same key and a different body give 422. | `idempotency_keys` written in the same tx as the effect | `TestIdempotency_RetryReturnsOriginal`, `TestIdempotency_KeyReuseDifferentBody`, `TestIdempotency_ConcurrentSameKey` *(stage 1)* |
-| I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs`, `TestPayout_AllPairs` (exhaustive tables); `TestStatemachine_NoIOImports` *(stage 1)* |
+| I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs` (72 pairs), `TestStatemachine_NoIOImports` in `api/internal/statemachine` *(exist)*; `TestPayout_AllPairs` *(stage 3)* |
 | I8 | **A payment is not final when first seen; reorgs reverse.** | Watcher block-hash chain, `payments` states, reversing entries | `TestWatcher_ReorgReversesConfirmedPayment` (Anvil snapshot/revert via testcontainers) *(stage 2)* |
 | I9 | **Duplicate sightings are no-ops.** | Unique `(network, tx_hash, log_index)` | `TestWatcher_DuplicateLogIsNoop` *(stage 1)* |
 | I10 | **One writer per signing key; no nonce is used twice.** | `signer_nonces` lease; unique `(signer, network, nonce)` | `TestTxMgr_ConcurrentSendersNeverShareNonce` *(stage 2)* |
