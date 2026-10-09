@@ -54,8 +54,7 @@ test("an invoice is paid on-chain and the tracking page updates live", async ({
   ).toBeVisible();
 });
 
-// Settlement needs the hand-written ledger engine (PR #1): confirmation and
-// finality post ledger entries. This test fails until the engine exists.
+// Settlement: confirmation and finality post ledger entries.
 test("the paid invoice becomes final and is shown as paid in full", async ({
   page,
 }) => {
@@ -85,7 +84,7 @@ test("the paid invoice becomes final and is shown as paid in full", async ({
 });
 
 // A payer with a browser wallet pays in three clicks: connect, send, track.
-// Independent of the ledger engine: it stops at "received".
+// It stops at "received"; settlement is covered above.
 test("a payer pays from a browser wallet", async ({ page }) => {
   await installTestWallet(page, browserRpcUrl(), walletPayer);
 

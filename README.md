@@ -24,7 +24,9 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
 | Ledger: double-entry, append-only, overdraft-proof schema enforced by PostgreSQL, and its posting engine | Done (stage 1) | `go test ./internal/ledger` (14 schema tests, 18 engine tests incl. property and concurrency tests) |
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | Done on Anvil (stage 1) | `make up && make e2e` (3 tests: live tracking, settlement to final, browser wallet) |
-| Base Sepolia deployment | Not started (stage 1) | — |
+| Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
+| Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Wired into CI; fails locally on a slow host, CI result pending (ADR-035) | `make lighthouse` |
+| Base Sepolia deployment | Deployer key ready; waiting for test ETH (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |

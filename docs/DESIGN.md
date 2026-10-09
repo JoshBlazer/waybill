@@ -141,7 +141,7 @@ Three large buttons (kill a worker mid-payout, force a reorg, replay a webhook),
 - Form errors move focus to an error summary.
 - Live updates are announced through one `aria-live="polite"` region ("Your payment is confirmed"), never by moving focus.
 - Inputs have visible labels; placeholders are never used as labels. Amount inputs use `inputmode="decimal"` and are parsed as integers in minor units.
-- Text contrast is at least 4.5 : 1, and non-text UI at least 3 : 1. Both are checked by axe in Playwright *(stage 1)*.
+- Text contrast is at least 4.5 : 1, and non-text UI at least 3 : 1. Both are checked by axe in Playwright (`e2e/accessibility.spec.ts`, every page and interactive state).
 - Touch targets are at least 44 × 44 px.
 - `prefers-reduced-motion` is honoured. No content flashes.
 - Pages work at 200% zoom and 320 px width without horizontal scroll.
@@ -162,4 +162,4 @@ The JavaScript budget is the measured Next.js and React baseline (about 170 KB g
 
 Wallet libraries (`wagmi`, `viem`) are not in any page's initial load. They load only after the payer presses "Pay with a browser wallet".
 
-`make budget` (and the CI stack job) measures the gzipped initial JavaScript of the tracking and payment pages on the running stack, and fails on overspend or on wallet code in the initial load. LCP, INP and CLS are measured by Lighthouse once its tooling is approved.
+`make budget` (and the CI stack job) measures the gzipped initial JavaScript of the tracking and payment pages on the running stack, and fails on overspend or on wallet code in the initial load. `make lighthouse` (and the CI stack job) measures LCP, TBT, CLS and total transfer with Lighthouse CI, median of three runs, against `web/lighthouserc.json` (ADR-035). Simulated throttling scales with the host CPU, so the CI runner is the reference.

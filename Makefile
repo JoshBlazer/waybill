@@ -12,7 +12,7 @@ GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1
 GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/schema.d.ts
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
-        lint-contracts lint-web check-gen e2e setup secrets budget
+        lint-contracts lint-web check-gen e2e setup secrets budget lighthouse
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -98,6 +98,25 @@ budget: deploy/.env ## Check JS budgets on the running stack (needs an invoice: 
 	cd web && for page in /t/$$code /pay/$$code; do \
 		node scripts/js-budget.mjs http://localhost:$${WAYBILL_WEB_PORT:-3000} $$page $(JS_BUDGET) || exit 1; \
 	done
+
+# Lighthouse (mobile, simulated slow 4G, 4x CPU) against the running stack,
+# with the budgets in docs/DESIGN.md §6 (web/lighthouserc.json). Runs in the
+# Playwright container, using its Chromium; @lhci/cli is pinned here, not a
+# web dependency (ADR-035).
+LHCI_VERSION := 0.15.1
+
+lighthouse: deploy/.env ## Lighthouse budgets on the running stack (needs an invoice: run make e2e first)
+	@code=$$($(COMPOSE) exec -T postgres psql -h 127.0.0.1 -U waybill -qAt \
+		-c "SELECT tracking_code FROM invoices ORDER BY created_at DESC LIMIT 1"); \
+	test -n "$$code" || { echo "No invoice yet: run make e2e first." >&2; exit 1; }; \
+	docker run --rm --init --ipc=host --network waybill_default \
+		--user "$$(id -u):$$(id -g)" -e HOME=/tmp \
+		-v "$(CURDIR)/web:/web" -w /web $(PLAYWRIGHT_IMAGE) bash -c ' \
+			export CHROME_PATH=$$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -n1); \
+			npx --yes @lhci/cli@$(LHCI_VERSION) collect --url=http://web:3000/t/'"$$code"' \
+				--url=http://web:3000/pay/'"$$code"' --url=http://web:3000/invoices/new && \
+			npx --yes @lhci/cli@$(LHCI_VERSION) upload && \
+			npx --yes @lhci/cli@$(LHCI_VERSION) assert'
 
 # --- Lint ----------------------------------------------------------------------
 

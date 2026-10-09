@@ -125,6 +125,9 @@ jobs:
       - name: JavaScript budgets
         if: success() || failure() # report budgets even when an e2e test fails
         run: make budget
+      - name: Lighthouse budgets (mobile, simulated slow 4G)
+        if: success() || failure()
+        run: make lighthouse
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@v7
@@ -132,6 +135,13 @@ jobs:
           name: playwright-traces
           path: web/test-results/
           retention-days: 7
+      - name: Upload Lighthouse reports
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-reports
+          path: web/lighthouse-results/
+          retention-days: 14
       - name: Logs on failure
         if: failure()
         run: docker compose -f deploy/compose.yaml logs

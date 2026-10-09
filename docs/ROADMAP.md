@@ -35,7 +35,7 @@ Build the whole path end to end before deepening any part of it.
 - [x] Wallet connect on the payment link with `wagmi`/`viem`, loaded only after the payer chooses it.
 - [x] Playwright e2e against the Compose stack: `make e2e`.
 - [x] JavaScript budget check in CI (`make budget`, ADR-033).
-- [ ] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md. *(Tooling awaits owner approval.)*
+- [x] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md (ADR-035). *(axe passes; Lighthouse fails locally on a slow, loaded machine; CI result pending.)*
 - [ ] Repeat on Base Sepolia: deploy contracts, pay one invoice, record addresses and one transaction hash in the README.
 
 **Exit check:** `make e2e` proves the whole path on Anvil, and the README records Base Sepolia contract addresses and one transaction hash.
