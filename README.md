@@ -49,7 +49,7 @@ make down
 
 - API health: <http://localhost:8080/v1/health>
 - Web: <http://localhost:3000>
-- PostgreSQL: `localhost:55432`; Anvil: `localhost:8545`. Host ports are overridable (see `deploy/compose.yaml`).
+- PostgreSQL: `localhost:55432`; Anvil: `localhost:58545`. Host ports avoid the usual 5432 and 8545 so the stack can run beside other projects; override them with the variables listed in `deploy/compose.yaml`.
 
 Configuration is documented in [`.env.example`](.env.example). No secrets are stored in the repository.
 

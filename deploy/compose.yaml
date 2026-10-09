@@ -8,7 +8,7 @@
 # never belong in this file; they come from the environment.
 #
 # Host ports bind to 127.0.0.1 and can be overridden to avoid clashes:
-# WAYBILL_PG_PORT (55432), WAYBILL_ANVIL_PORT (8545), WAYBILL_API_PORT (8080),
+# WAYBILL_PG_PORT (55432), WAYBILL_ANVIL_PORT (58545), WAYBILL_API_PORT (8080),
 # WAYBILL_WEB_PORT (3000).
 name: waybill
 
@@ -34,7 +34,7 @@ services:
     image: ghcr.io/foundry-rs/foundry:v1.8.3
     entrypoint: ["anvil"]
     command: ["--host", "0.0.0.0", "--chain-id", "31337", "--block-time", "2"]
-    ports: ["127.0.0.1:${WAYBILL_ANVIL_PORT:-8545}:8545"]
+    ports: ["127.0.0.1:${WAYBILL_ANVIL_PORT:-58545}:8545"]
     healthcheck:
       test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"]
       interval: 2s
