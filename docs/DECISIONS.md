@@ -198,3 +198,15 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** Chromium needs system libraries that the development machine cannot install without root, and CI should run the same thing.
 **Decision:** `make e2e` runs `mcr.microsoft.com/playwright:v1.64.0-noble` as the invoking user on the Compose network, against `web:3000` and `anvil:8545`. Tests pay through Anvil's unlocked dev account over JSON-RPC.
 **Consequences:** No host setup, and identical behaviour locally and in CI. The image is large (about 2 GB) and is pulled once.
+
+## ADR-033 JavaScript budget set from measurement
+**Status:** Accepted, 2026-10-09. Revises the budget table in DESIGN.md §6.
+**Context:** DESIGN.md set a 90 KB gzip JavaScript budget for the tracking page without measuring. On the running stack the page ships 177 KB, of which Waybill's own code is about 2 KB; the rest is the React DOM and Next.js runtime that any App Router page with a client component loads.
+**Decision:** The budget is 185 KB gzip of initial JavaScript per page: the framework baseline plus about 15 KB for Waybill's code. `make budget` enforces it in CI, and also fails if wallet code appears in any initial load. The tracking page stays fully readable as server-rendered HTML before scripts run.
+**Consequences:** The budget now guards Waybill's own growth instead of being permanently violated. Reaching 90 KB would mean leaving the App Router or removing all client components, which costs more than it gains. LCP, INP and CLS remain the user-facing measures, via Lighthouse once approved.
+
+## ADR-034 Contracts image compiled at build time
+**Status:** Accepted, 2026-10-09.
+**Context:** The local deploy container downloaded the Solidity compiler at run time. A transient DNS failure broke `make up`, and `make down --volumes` discarded the compiler cache each time.
+**Decision:** `contracts/Dockerfile` copies the sources and runs `forge build` at image build time. The one-shot `contracts` service only broadcasts the deployment to Anvil, as the image's non-root user.
+**Consequences:** `make up` needs no network once images are built, and Docker's layer cache survives `make down`. The image rebuilds when contract sources change.

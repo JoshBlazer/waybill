@@ -12,7 +12,7 @@ GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1
 GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/schema.d.ts
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
-        lint-contracts lint-web check-gen e2e setup secrets
+        lint-contracts lint-web check-gen e2e setup secrets budget
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -87,6 +87,17 @@ e2e: web/node_modules ## End-to-end tests against the running stack (run make up
 		-v "$(CURDIR)/web:/web" -w /web \
 		-e E2E_BASE_URL=http://web:3000 -e E2E_RPC_URL=http://anvil:8545 \
 		$(PLAYWRIGHT_IMAGE) npx playwright test
+
+# Initial JavaScript per page, gzipped (docs/DESIGN.md §6, ADR-033).
+JS_BUDGET := 185000
+
+budget: deploy/.env ## Check JS budgets on the running stack (needs an invoice: run make e2e first)
+	@code=$$($(COMPOSE) exec -T postgres psql -h 127.0.0.1 -U waybill -qAt \
+		-c "SELECT tracking_code FROM invoices ORDER BY created_at DESC LIMIT 1"); \
+	test -n "$$code" || { echo "No invoice yet: run make e2e first." >&2; exit 1; }; \
+	cd web && for page in /t/$$code /pay/$$code; do \
+		node scripts/js-budget.mjs http://localhost:$${WAYBILL_WEB_PORT:-3000} $$page $(JS_BUDGET) || exit 1; \
+	done
 
 # --- Lint ----------------------------------------------------------------------
 

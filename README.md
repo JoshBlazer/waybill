@@ -23,7 +23,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
 | Ledger: double-entry, append-only, overdraft-proof schema enforced by PostgreSQL, and its posting engine | Done (stage 1) | `go test ./internal/ledger` (14 schema tests, 18 engine tests incl. property and concurrency tests) |
-| Thin slice: invoice → pay on Anvil → watcher → live tracking page | Working up to "received"; settlement waits on the ledger engine (branch `stage1/thin-slice`) | `make up && make e2e` (live test passes; settlement test pending) |
+| Thin slice: invoice → pay on Anvil → watcher → live tracking page | Working up to "received"; settlement waits on the ledger engine (branch `stage1/thin-slice`) | `make up && make e2e` (live and browser-wallet tests pass; settlement test pending) |
 | Base Sepolia deployment | Not started (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |

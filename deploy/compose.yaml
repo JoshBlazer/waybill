@@ -43,24 +43,18 @@ services:
     mem_limit: 256m
 
   # One-shot: deploy the contracts to Anvil and record their addresses in
-  # the `deployments` volume. Anvil's dev accounts are unlocked, so no
-  # private key is needed or stored anywhere.
+  # the `deployments` volume. The image compiles at build time, so this
+  # needs no network. Anvil's dev accounts are unlocked: no private key is
+  # needed or stored anywhere.
   contracts:
-    image: ghcr.io/foundry-rs/foundry:v1.8.3
-    user: "0:0" # the fresh named volume is root-owned
-    working_dir: /contracts
-    entrypoint: ["forge"]
-    command: ["script", "script/Deploy.s.sol", "--rpc-url", "http://anvil:8545", "--broadcast",
-              "--unlocked", "--sender", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"]
+    build: ../contracts
+    image: waybill-contracts:local
+    command: ["--rpc-url", "http://anvil:8545", "--unlocked",
+              "--sender", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"]
     environment:
-      HOME: /root
-      FOUNDRY_OUT: /tmp/out
-      FOUNDRY_CACHE_PATH: /tmp/cache
       FOUNDRY_BROADCAST: /tmp/broadcast
     volumes:
-      - ../contracts:/contracts:ro
       - deployments:/contracts/deployments
-      - svm:/root/.svm # solc downloads survive restarts
     depends_on:
       anvil: { condition: service_healthy }
     restart: "no"
@@ -145,4 +139,3 @@ services:
 volumes:
   pgdata:
   deployments:
-  svm:

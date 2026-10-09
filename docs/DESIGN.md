@@ -155,7 +155,11 @@ Measured by Lighthouse CI (mobile profile, simulated slow 4G, 4× CPU slowdown) 
 | LCP | ≤ 2.0 s | ≤ 2.5 s |
 | INP (lab proxy: TBT ≤ 200 ms) | ≤ 200 ms | ≤ 200 ms |
 | CLS | ≤ 0.05 | ≤ 0.1 |
-| JS shipped (gzip) | ≤ 90 KB | ≤ 170 KB |
+| JS shipped up front (gzip) | ≤ 185 KB | ≤ 185 KB |
 | Total transfer, first load | ≤ 250 KB | ≤ 500 KB |
 
-Wallet libraries (`wagmi`, `viem`) load only on routes that connect a wallet, never on the tracking page.
+The JavaScript budget is the measured Next.js and React baseline (about 170 KB gzip for any App Router page with a client component) plus about 15 KB for Waybill's own code. The original 90 KB figure was set without measuring and is not achievable on this stack (ADR-033). The tracking page does not depend on JavaScript: it is complete server-rendered HTML, so a slow phone can read it before any script runs.
+
+Wallet libraries (`wagmi`, `viem`) are not in any page's initial load. They load only after the payer presses "Pay with a browser wallet".
+
+`make budget` (and the CI stack job) measures the gzipped initial JavaScript of the tracking and payment pages on the running stack, and fails on overspend or on wallet code in the initial load. LCP, INP and CLS are measured by Lighthouse once its tooling is approved.

@@ -32,9 +32,10 @@ Build the whole path end to end before deepening any part of it.
 - [x] `POST /v1/invoices`, `GET /v1/pay/{code}`, `GET /v1/track/{code}`, `GET /v1/track/{code}/events` (SSE).
 - [x] Watcher on Anvil: detect, confirm and finalise a deposit; post ledger entries; emit invoice events. *(Detection proven end to end; confirmation and finality wait on the ledger engine.)*
 - [x] Web: create invoice, payment link (stablecoin, address and copy), tracking page with live updates.
-- [ ] Wallet connect on the payment link with `wagmi`/`viem`.
+- [x] Wallet connect on the payment link with `wagmi`/`viem`, loaded only after the payer chooses it.
 - [x] Playwright e2e against the Compose stack: `make e2e` (the settlement test passes once the ledger engine exists).
-- [ ] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md.
+- [x] JavaScript budget check in CI (`make budget`, ADR-033).
+- [ ] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md. *(Tooling awaits owner approval.)*
 - [ ] Repeat on Base Sepolia: deploy contracts, pay one invoice, record addresses and one transaction hash in the README.
 
 **Exit check:** `make e2e` proves the whole path on Anvil, and the README records Base Sepolia contract addresses and one transaction hash.
