@@ -8,15 +8,10 @@ const plexSans = IBM_Plex_Sans({
   weight: ["400", "600"],
 });
 
-// Not preloaded: the mono face sets codes and amounts, never the largest
-// text, so it should not compete with the page for early bandwidth on a
-// slow connection (LCP budget, docs/DESIGN.md §6). Its fallback is
-// metric-matched, so the swap does not shift layout.
 const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
-  preload: false,
 });
 
 export const metadata: Metadata = {
