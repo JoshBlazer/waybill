@@ -2,6 +2,7 @@ package money
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -171,6 +172,16 @@ func TestScanNumeric_RejectsFractionsAndSpecials(t *testing.T) {
 	}
 	if err := a.ScanNumeric(pgtype.Numeric{Int: big.NewInt(15), Exp: 2, Valid: true}); err != nil || a.String() != "1500" {
 		t.Fatalf("ScanNumeric(15e2) = %s, %v", a, err)
+	}
+}
+
+func TestGoStringIsReadable(t *testing.T) {
+	got := fmt.Sprintf("%#v", FromInt64(125500000))
+	if got != `money.MustParseMinor("125500000")` {
+		t.Fatalf("%%#v = %s", got)
+	}
+	if !MustParseMinor("-42").Equal(FromInt64(-42)) {
+		t.Fatal("MustParseMinor")
 	}
 }
 

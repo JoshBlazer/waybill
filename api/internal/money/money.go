@@ -155,6 +155,20 @@ func (a Amount) IsZero() bool { return a.Sign() == 0 }
 // String returns the minor-unit integer, for example "125500000".
 func (a Amount) String() string { return a.big().String() }
 
+// GoString makes %#v (and test failure output) show the value, for example
+// money.MustParseMinor("125500000"), instead of a pointer.
+func (a Amount) GoString() string { return fmt.Sprintf("money.MustParseMinor(%q)", a.String()) }
+
+// MustParseMinor is ParseMinor for constants in tests and examples. It
+// panics on invalid input.
+func MustParseMinor(s string) Amount {
+	a, err := ParseMinor(s)
+	if err != nil {
+		panic(err)
+	}
+	return a
+}
+
 // Format renders the amount in major units with exactly `scale` decimal
 // places, for example Format(6) of 125500000 is "125.500000".
 func (a Amount) Format(scale uint8) string {
