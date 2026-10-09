@@ -22,7 +22,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | CI on every push | Done | [Actions](../../actions) |
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
-| Ledger schema: double-entry, append-only, overdraft-proof, enforced by PostgreSQL | Ready for review (branch `stage1/ledger-engine`) | 14 database-level tests in `internal/ledger/schema_test.go` |
+| Ledger schema: double-entry, append-only, overdraft-proof, enforced by PostgreSQL | Approved; merges with the engine (PR #1) | 14 database-level tests in `internal/ledger/schema_test.go` |
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | In progress (stage 1) | — |
 | Base Sepolia deployment | Not started (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
