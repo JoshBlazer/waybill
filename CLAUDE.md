@@ -62,8 +62,7 @@ Full list with proving tests: [docs/ARCHITECTURE.md §6](docs/ARCHITECTURE.md#6-
 
 ## How we work
 
-- **Hand-written modules.** For these three, Claude writes the design note, function signatures and failing tests, then **stops**. The owner implements; Claude reviews:
-  - the ledger posting engine
+- **Hand-written modules.** For these two, Claude writes the design note, function signatures and failing tests, then **stops**. The owner implements; Claude reviews:
   - the payout state machine
   - the nonce and fee logic in the transaction manager
 - **Everything else** Claude may implement, in small reviewable commits.

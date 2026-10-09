@@ -134,7 +134,7 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Consequences:** The same tool versions run locally and in CI with no global installs.
 
 ## ADR-022 Amounts as NUMERIC(78,0) in minor units
-**Status:** Accepted, 2026-10-09.
+**Status:** Accepted, 2026-10-09. Amended by ADR-028 (column type).
 **Context:** `BIGINT` cannot hold every `uint256` (for example large wei values). Floats are forbidden near money.
 **Decision:** All amount columns are `NUMERIC(78,0)` in minor units, with the asset (and so its scale) on the row. Go represents them as `money.Amount` (a `big.Int` paired with an asset). Rates are stored as integer numerator and denominator.
 **Consequences:** Exact arithmetic everywhere, with explicit rounding at conversion, where the rounding rule is recorded.
@@ -168,3 +168,9 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** "No secrets in the repository" needs a check, not only a `.gitignore`.
 **Decision:** `make secrets` runs the gitleaks container (`ghcr.io/gitleaks/gitleaks:v8.30.1`) over the full git history with the default rules plus `.gitleaks.toml`. The allowlist names exact fake strings in exact files, never whole rules. CI runs it in the `secrets` job. It is a CI tool only, not a code dependency.
 **Consequences:** A committed secret fails CI even when later removed from the tip, because history is scanned. A real leak still requires rotating the key; the scan only detects it.
+
+## ADR-028 Amounts use a `minor_units` domain, not NUMERIC(78,0)
+**Status:** Accepted, 2026-10-09 (owner approved the ledger schema).
+**Context:** ADR-022 chose `NUMERIC(78,0)`. PostgreSQL coerces a value to the column's scale **before** `CHECK` constraints run, so `INSERT … VALUES (1.5)` into a `numeric(78,0)` column with `CHECK (v = trunc(v))` silently stores `2`. Verified on PostgreSQL 17. Silent rounding of money is exactly what the project forbids.
+**Decision:** Every amount column uses `CREATE DOMAIN minor_units AS numeric CHECK (scale(VALUE) = 0 AND abs(VALUE) < 1e78)`. Unconstrained `numeric` keeps the value as sent, and the domain rejects any fractional scale. The 78-digit bound (any `uint256`) is unchanged. Go still uses `money.Amount`; sqlc maps the domain to it.
+**Consequences:** A fractional amount is an error at insert, never a rounded value (`TestLedger_FractionalAmountRejected`). The integer-only intent of ADR-022 now actually holds.

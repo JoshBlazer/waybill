@@ -9,3 +9,12 @@ sql:
         out: internal/store
         sql_package: pgx/v5
         emit_interface: true
+        emit_pointers_for_null_types: true
+        overrides:
+          # Every amount column uses the minor_units domain and maps to the
+          # exact money.Amount type, never to a float or a string.
+          - db_type: minor_units
+            go_type: github.com/JoshBlazer/waybill/api/internal/money.Amount
+          - db_type: minor_units
+            nullable: true
+            go_type: github.com/JoshBlazer/waybill/api/internal/money.Amount

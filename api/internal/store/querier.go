@@ -6,11 +6,32 @@ package store
 
 import (
 	"context"
+
+	"github.com/JoshBlazer/waybill/api/internal/money"
 )
 
 type Querier interface {
+	// Accounts whose cached balance differs from the sum of their postings.
+	// Must always return no rows.
+	BalanceCacheMismatches(ctx context.Context) ([]BalanceCacheMismatchesRow, error)
+	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
+	// Ordered by id: callers that lock accounts must always lock in this order.
+	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
+	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
+	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
+	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
+	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
+	// Ledger queries. See docs/design/ledger.md.
+	// Creates an account, or returns the existing one with the same code. The
+	// caller compares the returned row with what it asked for.
+	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
+	InsertJournalEntry(ctx context.Context, arg InsertJournalEntryParams) (InsertJournalEntryRow, error)
+	InsertPosting(ctx context.Context, arg InsertPostingParams) error
+	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
+	// Sum of all postings per asset. Every row must be zero.
+	TrialBalance(ctx context.Context) ([]TrialBalanceRow, error)
 }
 
 var _ Querier = (*Queries)(nil)
