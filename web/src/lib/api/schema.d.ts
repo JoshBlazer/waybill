@@ -25,6 +25,85 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/invoices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create an invoice and its payment link.
+     * @description Creates an invoice for the authenticated contractor, with a deposit
+     *     address per supported network. Retrying with the same
+     *     `Idempotency-Key` and body returns the original response; reusing the
+     *     key with a different body is a 422.
+     */
+    post: operations["createInvoice"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/pay/{code}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What a payer sees when opening a payment link. */
+    get: operations["getPayment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/track/{code}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The four-step tracking view of a payment. */
+    get: operations["getTracking"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/track/{code}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Live tracking updates as Server-Sent Events.
+     * @description Each event has `event: tracking`, an `id` (send it back as
+     *     `Last-Event-ID` to resume) and a `data` line holding a `Tracking`
+     *     object. The current state is sent immediately on connect.
+     */
+    get: operations["streamTracking"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -44,9 +123,138 @@ export interface components {
       /** @description Always true. The service refuses to start otherwise. */
       testMode: boolean;
     };
+    /** @description An exact amount. `minor` / 10^`scale` is the value in major units. */
+    Amount: {
+      /** @example USDC */
+      asset: string;
+      /**
+       * @description Minor units as a base-10 integer string.
+       * @example 125500000
+       */
+      minor: string;
+      /** @example 6 */
+      scale: number;
+    };
+    CreateInvoiceRequest: {
+      /** @example Design work, September */
+      description: string;
+      /**
+       * @description Major units as a decimal string, at most the asset's scale in decimals.
+       * @example 125.50
+       */
+      amount: string;
+      /** @enum {string} */
+      asset: "USDC";
+      /**
+       * @description `hold` keeps the stablecoin in the contractor's balance. `naira`
+       *     converts and sends to the bank, and is accepted from stage 3; until
+       *     then it returns 422.
+       * @enum {string}
+       */
+      payout: "naira" | "hold";
+    };
+    /** @enum {string} */
+    InvoiceState:
+      | "open"
+      | "received"
+      | "underpaid"
+      | "overpaid"
+      | "confirmed"
+      | "settled"
+      | "expired"
+      | "cancelled";
+    DepositAddress: {
+      /** @example evm:84532 */
+      network: string;
+      /** @description EIP-55 checksummed. Unique to this invoice and network. */
+      address: string;
+      /** @description The only token contract accepted at this address. */
+      token: string;
+    };
+    Invoice: {
+      /** Format: uuid */
+      id: string;
+      /** @example WB-7KQ4-M2XD-9PRA-3HNC */
+      trackingCode: string;
+      /** Format: uri */
+      payUrl: string;
+      /** Format: uri */
+      trackUrl: string;
+      state: components["schemas"]["InvoiceState"];
+      description: string;
+      amount: components["schemas"]["Amount"];
+      /** @enum {string} */
+      payout: "naira" | "hold";
+      depositAddresses: components["schemas"]["DepositAddress"][];
+      /** Format: date-time */
+      expiresAt: string;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    PaymentLink: {
+      trackingCode: string;
+      /** @description The contractor's legal name, shown before any address. */
+      contractorName: string;
+      /** @description True when the name has been verified against the contractor's bank account. */
+      verified: boolean;
+      description: string;
+      amount: components["schemas"]["Amount"];
+      depositAddresses: components["schemas"]["DepositAddress"][];
+      state: components["schemas"]["InvoiceState"];
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    TrackingStep: {
+      /** @enum {string} */
+      step: "received" | "confirmed" | "converted" | "sent_to_bank";
+      /**
+       * @description `checking` means Waybill could not find out yet; it is never
+       *     shown as a failure. `skipped` is used for converted and
+       *     sent_to_bank when the contractor keeps the stablecoin.
+       * @enum {string}
+       */
+      status: "done" | "current" | "waiting" | "checking" | "skipped";
+      /** Format: date-time */
+      at?: string | null;
+    };
+    Tracking: {
+      trackingCode: string;
+      contractorName: string;
+      amount: components["schemas"]["Amount"];
+      invoiceState: components["schemas"]["InvoiceState"];
+      steps: components["schemas"]["TrackingStep"][];
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    Problem: {
+      /**
+       * @description A URI reference identifying the problem type.
+       * @example https://waybill.dev/problems/validation
+       */
+      type: string;
+      title: string;
+      status: number;
+      detail?: string;
+      instance?: string;
+    };
   };
-  responses: never;
-  parameters: never;
+  responses: {
+    /** @description An error, as RFC 9457 problem details. */
+    Problem: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/problem+json": components["schemas"]["Problem"];
+      };
+    };
+  };
+  parameters: {
+    /** @description Unique per logical request, 1–255 printable ASCII characters. */
+    IdempotencyKey: string;
+    /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
+    TrackingCode: string;
+  };
   requestBodies: never;
   headers: never;
   pathItems: never;
@@ -80,6 +288,111 @@ export interface operations {
           "application/json": components["schemas"]["Health"];
         };
       };
+    };
+  };
+  createInvoice: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateInvoiceRequest"];
+      };
+    };
+    responses: {
+      /** @description Created. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invoice"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  getPayment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
+        code: components["parameters"]["TrackingCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The payment link. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentLink"];
+        };
+      };
+      404: components["responses"]["Problem"];
+    };
+  };
+  getTracking: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
+        code: components["parameters"]["TrackingCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The tracking view. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Tracking"];
+        };
+      };
+      404: components["responses"]["Problem"];
+    };
+  };
+  streamTracking: {
+    parameters: {
+      query?: never;
+      header?: {
+        "Last-Event-ID"?: string;
+      };
+      path: {
+        /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
+        code: components["parameters"]["TrackingCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description An event stream. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": string;
+        };
+      };
+      404: components["responses"]["Problem"];
     };
   };
 }

@@ -129,29 +129,3 @@ func ClassifyConfirmation(confirmedTotal, due money.Amount) InvoiceEvent {
 		return EvConfirmedOver
 	}
 }
-
-// TrackingStep is one of the four public tracking steps.
-type TrackingStep int
-
-// Tracking steps, in order. StepNone means nothing has happened yet.
-const (
-	StepNone TrackingStep = iota
-	StepReceived
-	StepConfirmed
-	StepConverted
-	StepSentToBank
-)
-
-// InvoiceTrackingStep maps an invoice state to how far along the public
-// tracking line it is. Converted and sent-to-bank come from the payout
-// machine, so an invoice alone reaches at most StepConfirmed.
-func InvoiceTrackingStep(s InvoiceState) TrackingStep {
-	switch s {
-	case InvoiceReceived, InvoiceUnderpaid:
-		return StepReceived
-	case InvoiceConfirmed, InvoiceOverpaid, InvoiceSettled:
-		return StepConfirmed
-	default:
-		return StepNone
-	}
-}

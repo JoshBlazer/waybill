@@ -15,7 +15,7 @@ All commands run inside WSL Ubuntu from `~/waybill`.
 | `make lint` | golangci-lint, `forge fmt --check`, ESLint, `tsc`, Prettier, codegen drift check |
 | `make gen` | Regenerate Go server types, sqlc code and TS types from `openapi/` and `api/db/` |
 | `make secrets` | gitleaks over the full git history (allowlist in `.gitleaks.toml`) |
-| `make e2e` | Playwright end to end (stage 1; fails until then) |
+| `make e2e` | Playwright end to end against the running stack (in the Playwright container) |
 | `make help` | List every target |
 
 Single suites: `make test-api`, `make test-contracts`, `make test-web`. Fast Go loop: `cd api && go test -short ./...` skips Docker-backed tests.
@@ -25,11 +25,19 @@ Single suites: `make test-api`, `make test-contracts`, `make test-web`. Fast Go 
 ```
 api/                 Go module, one binary: cmd/waybill (api | worker | watcher | migrate | healthcheck)
   internal/safety    test-money guard (runs first in every service)
-  internal/config    environment loading
-  internal/httpapi   generated server (api.gen.go) + handlers
+  internal/money     exact minor-unit amounts; no floats (AST-checked)
+  internal/ledger    double-entry ledger; post.go is HAND-WRITTEN by the owner
+  internal/statemachine  pure invoice (and later payout) state machines
+  internal/invoice   create invoices, load views, apply state transitions
+  internal/watcher   EVM payment detection, confirmation, finality
+  internal/tracking  four-step public tracking view (pure)
+  internal/evm, deployments  CREATE2 deposit addresses; on-chain deployment checks
+  internal/auth      contractor API keys
+  internal/httpapi   generated server (api.gen.go), handlers, SSE broker
   internal/store     sqlc output; queries in db/queries, migrations in db/migrations (goose)
+  internal/testdb    per-test PostgreSQL databases (testcontainers)
 contracts/           Foundry; src/, test/, lib/ (forge-std, OpenZeppelin as pinned submodules)
-web/                 Next.js App Router; src/lib/api/schema.d.ts is generated
+web/                 Next.js App Router; src/lib/api/schema.d.ts is generated; e2e/ is Playwright
 openapi/waybill.yaml The API contract. Edit here first, then `make gen`
 deploy/compose.yaml  Local stack; heavy services behind profiles
 docs/                Product, architecture, design, roadmap, decisions, risks

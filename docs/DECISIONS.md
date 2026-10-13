@@ -174,3 +174,51 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** ADR-022 chose `NUMERIC(78,0)`. PostgreSQL coerces a value to the column's scale **before** `CHECK` constraints run, so `INSERT … VALUES (1.5)` into a `numeric(78,0)` column with `CHECK (v = trunc(v))` silently stores `2`. Verified on PostgreSQL 17. Silent rounding of money is exactly what the project forbids.
 **Decision:** Every amount column uses `CREATE DOMAIN minor_units AS numeric CHECK (scale(VALUE) = 0 AND abs(VALUE) < 1e78)`. Unconstrained `numeric` keeps the value as sent, and the domain rejects any fractional scale. The 78-digit bound (any `uint256`) is unchanged. Go still uses `money.Amount`; sqlc maps the domain to it.
 **Consequences:** A fractional amount is an error at insert, never a rounded value (`TestLedger_FractionalAmountRejected`). The integer-only intent of ADR-022 now actually holds.
+
+## ADR-029 Idempotency key claimed in the effect's own transaction
+**Status:** Accepted, 2026-10-09.
+**Context:** A common design writes an "in progress" idempotency row in its own transaction, does the work, then completes the row. A crash between the steps leaves a stuck key, and returning the original response requires a lock or polling.
+**Decision:** The handler inserts the key with `ON CONFLICT DO NOTHING` inside the same transaction as the invoice and stores the response there before committing. A concurrent request with the same key blocks on the unique index until the first commits, then reads the stored response. If the first rolls back (validation error, crash), the key never existed.
+**Consequences:** There are no stuck keys and no polling, and a failed request does not burn its key. A retry after a timeout replays the original. Proven by `TestCreateInvoice_ConcurrentSameKeyCreatesOne` and `TestCreateInvoice_FailedRequestDoesNotBurnKey`.
+
+## ADR-030 Contract deployments are verified on-chain at startup
+**Status:** Accepted, 2026-10-09.
+**Context:** Deposit addresses are computed off-chain from the factory and implementation addresses. A wrong address in configuration would hand payers addresses that no deployed contract can sweep.
+**Decision:** `deploy/` records addresses in `contracts/deployments/<chainId>.json`. The API and watcher refuse to start unless the chain confirms the factory's implementation, the factory's `predict()` agrees with Waybill's own CREATE2 computation, and the token has six decimals.
+**Consequences:** A misconfiguration stops the service instead of losing funds. Local Anvil files are generated per run and not committed; public test network files are committed.
+
+## ADR-031 Live updates through a same-origin SSE proxy; each event is the full view
+**Status:** Accepted, 2026-10-09.
+**Context:** The browser should not need the API's address or a CORS policy. Missed events on a flaky mobile connection must not leave the page wrong.
+**Decision:** The web app exposes `/api/track/{code}/events`, which streams the API's SSE response through unchanged. Every event carries the complete tracking view, so a reconnecting client needs only the latest event, and `Last-Event-ID` needs no replay log.
+**Consequences:** Events are a few hundred bytes larger than deltas, which is negligible next to the simplicity. The tracking page stays correct after any disconnection.
+
+## ADR-032 End-to-end tests run in the Playwright container
+**Status:** Accepted, 2026-10-09.
+**Context:** Chromium needs system libraries that the development machine cannot install without root, and CI should run the same thing.
+**Decision:** `make e2e` runs `mcr.microsoft.com/playwright:v1.64.0-noble` as the invoking user on the Compose network, against `web:3000` and `anvil:8545`. Tests pay through Anvil's unlocked dev account over JSON-RPC.
+**Consequences:** No host setup, and identical behaviour locally and in CI. The image is large (about 2 GB) and is pulled once.
+
+## ADR-033 JavaScript budget set from measurement
+**Status:** Accepted, 2026-10-09. Revises the budget table in DESIGN.md §6.
+**Context:** DESIGN.md set a 90 KB gzip JavaScript budget for the tracking page without measuring. On the running stack the page ships 177 KB, of which Waybill's own code is about 2 KB; the rest is the React DOM and Next.js runtime that any App Router page with a client component loads.
+**Decision:** The budget is 185 KB gzip of initial JavaScript per page: the framework baseline plus about 15 KB for Waybill's code. `make budget` enforces it in CI, and also fails if wallet code appears in any initial load. The tracking page stays fully readable as server-rendered HTML before scripts run.
+**Consequences:** The budget now guards Waybill's own growth instead of being permanently violated. Reaching 90 KB would mean leaving the App Router or removing all client components, which costs more than it gains. LCP, INP and CLS remain the user-facing measures, via Lighthouse once approved.
+
+## ADR-034 Contracts image compiled at build time
+**Status:** Accepted, 2026-10-09.
+**Context:** The local deploy container downloaded the Solidity compiler at run time. A transient DNS failure broke `make up`, and `make down --volumes` discarded the compiler cache each time.
+**Decision:** `contracts/Dockerfile` copies the sources and runs `forge build` at image build time. The one-shot `contracts` service only broadcasts the deployment to Anvil, as the image's non-root user.
+**Consequences:** `make up` needs no network once images are built, and Docker's layer cache survives `make down`. The image rebuilds when contract sources change.
+
+## ADR-035 Accessibility and performance checks: axe in Playwright, Lighthouse CI in the test container
+**Status:** Accepted, 2026-10-09 (tooling approved by the owner).
+**Context:** DESIGN.md §5 and §6 promise WCAG 2.1 AA and LCP, TBT and CLS budgets checked in CI. Both need tooling beyond the stack. `@lhci/cli` 0.15.1 pulls in about 17 packages with published advisories (puppeteer, proxy-agent and others), all build-time only.
+**Decision:** `@axe-core/playwright` (pinned, dev dependency) runs in `e2e/accessibility.spec.ts` on every thin-slice page and interactive state, with tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`; any violation fails `make e2e`. Lighthouse CI is not a web dependency: `make lighthouse` runs `npx @lhci/cli@0.15.1` inside the pinned Playwright container, using its Chromium, against the Compose stack, three runs per page, median asserted against `web/lighthouserc.json`. Reports stay local (`upload.target: filesystem`); nothing is sent to a public server.
+**Consequences:** `package-lock.json` and `npm audit` stay free of Lighthouse's dependency tree. Simulated throttling multiplies the host's real CPU speed, so results depend on the machine: on a loaded 4-core WSL host Lighthouse reported a `benchmarkIndex` of 250 to 740 and failed the TBT budget by a wide margin. The CI runner is the reference machine; local runs are indicative. If CI also fails, the fix is in the pages, not the budget.
+
+## ADR-036 Lighthouse budgets set from measurement
+**Status:** Accepted, 2026-10-09 (owner chose this over report-only or a client-component-free tracking page). Revises the LCP and TBT rows in DESIGN.md §6.
+**Context:** The first CI runs (GitHub runner, Lighthouse benchmarkIndex 1,900 to 2,700) measured, as medians of three runs: tracking page LCP 2.44 to 2.45 s against a 2.0 s budget, and TBT 157 to 302 ms per run against 200 ms on every page. Individual LCP runs fall at about 1.9 s or about 2.5 s on every page, and include 2.50 s and 2.52 s on the tracking page. Unthrottled, the tracking page paints its largest text at 89 ms with CLS near zero. The simulated cost is the React and Next.js baseline (ADR-033), not Waybill's code. Removing the font preloads changed nothing measurable and was reverted.
+**Decision:** LCP ≤ 2.6 s on the tracking page and ≤ 3.0 s elsewhere; TBT ≤ 350 ms on every page. CLS and total-transfer budgets are unchanged. The step remains a hard CI gate. The tracking page's 2.6 s replaces the 2.5 s first proposed, because 2.5 s sits inside the measured spread and would fail at random.
+**Consequences:** The gate catches regressions, such as a heavy dependency or a blocking script, without failing on noise. Meeting the original figures would need a tracking page with no client components (live updates via a small plain script), which is the recorded alternative if real-device measurements show it matters.

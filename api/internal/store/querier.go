@@ -8,30 +8,68 @@ import (
 	"context"
 
 	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/google/uuid"
 )
 
 type Querier interface {
 	// Accounts whose cached balance differs from the sum of their postings.
 	// Must always return no rows.
 	BalanceCacheMismatches(ctx context.Context) ([]BalanceCacheMismatchesRow, error)
+	// Idempotency ----------------------------------------------------------------
+	// Inserts the key inside the caller's transaction. A concurrent request
+	// with the same key blocks here until the first transaction ends.
+	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (string, error)
+	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
+	GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error)
 	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
+	GetChainCursor(ctx context.Context, network string) (int64, error)
+	GetContractor(ctx context.Context, id uuid.UUID) (Contractor, error)
+	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
+	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
+	GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoice, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
 	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
+	InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) error
 	// Ledger queries. See docs/design/ledger.md.
 	// Creates an account, or returns the existing one with the same code. The
 	// caller compares the returned row with what it asked for.
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
+	InsertDepositAddress(ctx context.Context, arg InsertDepositAddressParams) error
+	// Invoices ----------------------------------------------------------------
+	InsertInvoice(ctx context.Context, arg InsertInvoiceParams) (Invoice, error)
+	InsertInvoiceEvent(ctx context.Context, arg InsertInvoiceEventParams) (InsertInvoiceEventRow, error)
 	InsertJournalEntry(ctx context.Context, arg InsertJournalEntryParams) (InsertJournalEntryRow, error)
+	// ON CONFLICT: the same log seen twice is the same payment (I9).
+	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
+	LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
+	ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error)
+	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
+	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
+	// Payments (watcher) --------------------------------------------------------
+	// Every deposit address on a network, including expired invoices: late
+	// payments are still recorded (docs/RISKS.md §7).
+	ListWatchedAddresses(ctx context.Context, network string) ([]ListWatchedAddressesRow, error)
+	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
+	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
+	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
+	// Total of an invoice's payments that have reached at least the given state.
+	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)
 	// Sum of all postings per asset. Every row must be zero.
 	TrialBalance(ctx context.Context) ([]TrialBalanceRow, error)
+	UpdateInvoiceState(ctx context.Context, arg UpdateInvoiceStateParams) error
+	// Chain tokens -----------------------------------------------------------
+	UpsertChainToken(ctx context.Context, arg UpsertChainTokenParams) error
+	// Contractors and API keys -----------------------------------------------
+	UpsertContractor(ctx context.Context, arg UpsertContractorParams) (Contractor, error)
 }
 
 var _ Querier = (*Queries)(nil)

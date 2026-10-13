@@ -7,9 +7,9 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/JoshBlazer/waybill/api/internal/money"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const balanceCacheMismatches = `-- name: BalanceCacheMismatches :many
@@ -137,7 +137,7 @@ type GetJournalEntryRow struct {
 	RefID           string
 	Memo            string
 	ReversesEntryID *int64
-	CreatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
 }
 
 func (q *Queries) GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error) {
@@ -169,7 +169,7 @@ type GetJournalEntryByIdempotencyKeyRow struct {
 	RefID           string
 	Memo            string
 	ReversesEntryID *int64
-	CreatedAt       pgtype.Timestamptz
+	CreatedAt       time.Time
 }
 
 func (q *Queries) GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error) {
@@ -260,7 +260,7 @@ type InsertJournalEntryParams struct {
 
 type InsertJournalEntryRow struct {
 	ID        int64
-	CreatedAt pgtype.Timestamptz
+	CreatedAt time.Time
 }
 
 func (q *Queries) InsertJournalEntry(ctx context.Context, arg InsertJournalEntryParams) (InsertJournalEntryRow, error) {

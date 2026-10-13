@@ -13,6 +13,9 @@ import {Vault} from "../src/Vault.sol";
 ///         refuses to deploy anywhere else.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url $RPC --broadcast --private-key $KEY
+///
+/// Writes the addresses to deployments/<chainId>.json, which the Go services
+/// load and verify against the chain at startup.
 contract Deploy is Script {
     uint128 internal constant PER_TX = 10_000e6; // 10,000 mUSDC
     uint128 internal constant PER_DAY = 50_000e6; // 50,000 mUSDC
@@ -31,6 +34,14 @@ contract Deploy is Script {
         factory.grantRole(factory.SWEEPER_ROLE(), operator);
 
         vm.stopBroadcast();
+
+        string memory key = "deployment";
+        vm.serializeUint(key, "chainId", block.chainid);
+        vm.serializeAddress(key, "token", address(usdc));
+        vm.serializeAddress(key, "vault", address(vault));
+        vm.serializeAddress(key, "implementation", address(factory.implementation()));
+        string memory json = vm.serializeAddress(key, "factory", address(factory));
+        vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
 
         console.log("chain id        ", block.chainid);
         console.log("MockStablecoin  ", address(usdc));

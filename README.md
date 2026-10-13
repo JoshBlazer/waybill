@@ -23,8 +23,10 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
 | Ledger: double-entry, append-only, overdraft-proof schema enforced by PostgreSQL, and its posting engine | Done (stage 1) | `go test ./internal/ledger` (14 schema tests, 18 engine tests incl. property and concurrency tests) |
-| Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | In progress (stage 1) | — |
-| Base Sepolia deployment | Not started (stage 1) | — |
+| Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | Done on Anvil (stage 1) | `make up && make e2e` (3 tests: live tracking, settlement to final, browser wallet) |
+| Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
+| Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Done (stage 1); budgets set from CI measurement (ADR-036) | `make lighthouse` |
+| Base Sepolia deployment | Deployer key ready; waiting for test ETH (stage 1) | — |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
@@ -44,12 +46,13 @@ git clone --recurse-submodules https://github.com/JoshBlazer/waybill.git
 cd waybill
 make up      # PostgreSQL, Anvil, migrations, API on :8080, web on :3000
 make test    # Go (incl. Docker-backed integration), Foundry, Vitest
+make e2e     # Playwright against the running stack (pulls the Playwright image once)
 make lint    # linters, formatters, type checks, codegen drift
 make down
 ```
 
 - API health: <http://localhost:8080/v1/health>
-- Web: <http://localhost:3000>
+- Web: <http://localhost:3000>; create a test invoice at <http://localhost:3000/invoices/new>
 - PostgreSQL: `localhost:55432`; Anvil: `localhost:58545`. Host ports avoid the usual 5432 and 8545 so the stack can run beside other projects; override them with the variables listed in `deploy/compose.yaml`.
 
 Configuration is documented in [`.env.example`](.env.example). No secrets are stored in the repository.

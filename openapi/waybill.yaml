@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -9,11 +9,21 @@ info:
 
     This file is the contract. Go server types and TypeScript types are
     generated from it; run `make gen` after editing.
+
+    **Amounts are never JSON numbers.** An amount is an object with the
+    asset, the value in minor units as a decimal string, and the asset's
+    scale, so no client can round it through a floating-point type.
+
+    **Errors** use RFC 9457 `application/problem+json`.
 servers:
   - url: /
 tags:
   - name: system
     description: Service status.
+  - name: invoices
+    description: Contractor invoices and their payment links.
+  - name: public
+    description: Pages anyone with the link can open.
 paths:
   /v1/health:
     get:
@@ -36,7 +46,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /v1/invoices:
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create an invoice and its payment link.
+      description: |
+        Creates an invoice for the authenticated contractor, with a deposit
+        address per supported network. Retrying with the same
+        `Idempotency-Key` and body returns the original response; reusing the
+        key with a different body is a 422.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceRequest"
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+
+  /v1/pay/{code}:
+    get:
+      operationId: getPayment
+      tags: [public]
+      summary: What a payer sees when opening a payment link.
+      parameters:
+        - $ref: "#/components/parameters/TrackingCode"
+      responses:
+        "200":
+          description: The payment link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/track/{code}:
+    get:
+      operationId: getTracking
+      tags: [public]
+      summary: The four-step tracking view of a payment.
+      parameters:
+        - $ref: "#/components/parameters/TrackingCode"
+      responses:
+        "200":
+          description: The tracking view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tracking"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/track/{code}/events:
+    get:
+      operationId: streamTracking
+      tags: [public]
+      summary: Live tracking updates as Server-Sent Events.
+      description: |
+        Each event has `event: tracking`, an `id` (send it back as
+        `Last-Event-ID` to resume) and a `data` line holding a `Tracking`
+        object. The current state is sent immediately on connect.
+      parameters:
+        - $ref: "#/components/parameters/TrackingCode"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/Problem"
+
 components:
+  securitySchemes:
+    contractorKey:
+      type: http
+      scheme: bearer
+      description: A contractor API key, `wb_test_…`.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique per logical request, 1–255 printable ASCII characters.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    TrackingCode:
+      name: code
+      in: path
+      required: true
+      description: Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`.
+      schema:
+        type: string
+        pattern: "^WB(-[0-9A-HJKMNP-TV-Z]{4}){4}$"
+
+  responses:
+    Problem:
+      description: An error, as RFC 9457 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
   schemas:
     Health:
       type: object
@@ -62,3 +202,194 @@ components:
         testMode:
           type: boolean
           description: Always true. The service refuses to start otherwise.
+
+    Amount:
+      type: object
+      additionalProperties: false
+      required: [asset, minor, scale]
+      description: An exact amount. `minor` / 10^`scale` is the value in major units.
+      properties:
+        asset:
+          type: string
+          example: USDC
+        minor:
+          type: string
+          pattern: "^-?(0|[1-9][0-9]{0,77})$"
+          description: Minor units as a base-10 integer string.
+          example: "125500000"
+        scale:
+          type: integer
+          minimum: 0
+          maximum: 18
+          example: 6
+
+    CreateInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [description, amount, asset, payout]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+          example: Design work, September
+        amount:
+          type: string
+          description: Major units as a decimal string, at most the asset's scale in decimals.
+          pattern: "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+          example: "125.50"
+        asset:
+          type: string
+          enum: [USDC]
+        payout:
+          type: string
+          enum: [naira, hold]
+          description: |
+            `hold` keeps the stablecoin in the contractor's balance. `naira`
+            converts and sends to the bank, and is accepted from stage 3; until
+            then it returns 422.
+
+    InvoiceState:
+      type: string
+      enum: [open, received, underpaid, overpaid, confirmed, settled, expired, cancelled]
+
+    DepositAddress:
+      type: object
+      additionalProperties: false
+      required: [network, address, token]
+      properties:
+        network:
+          type: string
+          example: evm:84532
+        address:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{40}$"
+          description: EIP-55 checksummed. Unique to this invoice and network.
+        token:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{40}$"
+          description: The only token contract accepted at this address.
+
+    Invoice:
+      type: object
+      additionalProperties: false
+      required: [id, trackingCode, payUrl, trackUrl, state, description, amount, payout, depositAddresses, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trackingCode:
+          type: string
+          example: WB-7KQ4-M2XD-9PRA-3HNC
+        payUrl:
+          type: string
+          format: uri
+        trackUrl:
+          type: string
+          format: uri
+        state:
+          $ref: "#/components/schemas/InvoiceState"
+        description:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        payout:
+          type: string
+          enum: [naira, hold]
+        depositAddresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositAddress"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    PaymentLink:
+      type: object
+      additionalProperties: false
+      required: [trackingCode, contractorName, verified, description, amount, depositAddresses, state, expiresAt]
+      properties:
+        trackingCode:
+          type: string
+        contractorName:
+          type: string
+          description: The contractor's legal name, shown before any address.
+        verified:
+          type: boolean
+          description: True when the name has been verified against the contractor's bank account.
+        description:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        depositAddresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositAddress"
+        state:
+          $ref: "#/components/schemas/InvoiceState"
+        expiresAt:
+          type: string
+          format: date-time
+
+    TrackingStep:
+      type: object
+      additionalProperties: false
+      required: [step, status]
+      properties:
+        step:
+          type: string
+          enum: [received, confirmed, converted, sent_to_bank]
+        status:
+          type: string
+          enum: [done, current, waiting, checking, skipped]
+          description: |
+            `checking` means Waybill could not find out yet; it is never
+            shown as a failure. `skipped` is used for converted and
+            sent_to_bank when the contractor keeps the stablecoin.
+        at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Tracking:
+      type: object
+      additionalProperties: false
+      required: [trackingCode, contractorName, amount, invoiceState, steps, updatedAt]
+      properties:
+        trackingCode:
+          type: string
+        contractorName:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        invoiceState:
+          $ref: "#/components/schemas/InvoiceState"
+        steps:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/TrackingStep"
+        updatedAt:
+          type: string
+          format: date-time
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          description: A URI reference identifying the problem type.
+          example: https://waybill.dev/problems/validation
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
