@@ -36,7 +36,8 @@ Build the whole path end to end before deepening any part of it.
 - [x] Playwright e2e against the Compose stack: `make e2e`.
 - [x] JavaScript budget check in CI (`make budget`, ADR-033).
 - [x] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md (ADR-035). Budgets revised from measurement (ADR-036).
-- [ ] Repeat on Base Sepolia: deploy contracts, pay one invoice, record addresses and one transaction hash in the README.
+- [x] Deploy the contracts to Base Sepolia and record the addresses and a transaction hash in the README.
+- [ ] Pay one invoice on Base Sepolia. Blocked: on a network with no cursor yet, the watcher scans from block 0, which suits Anvil but means about 48 million blocks on Base Sepolia. It needs a start block first.
 
 **Exit check:** `make e2e` proves the whole path on Anvil, and the README records Base Sepolia contract addresses and one transaction hash.
 
