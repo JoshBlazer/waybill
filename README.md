@@ -26,7 +26,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | Done on Anvil (stage 1) | `make up && make e2e` (3 tests: live tracking, settlement to final, browser wallet) |
 | Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
 | Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Done (stage 1); budgets set from CI measurement (ADR-036) | `make lighthouse` |
-| Base Sepolia deployment | Deployer key ready; waiting for test ETH (stage 1) | — |
+| Base Sepolia deployment | Contracts deployed (stage 1); paying an invoice there is not done yet | [Testnet deployments](#testnet-deployments) |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
@@ -35,7 +35,18 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 
 ### Testnet deployments
 
-None yet. Contract addresses and a transaction hash on Base Sepolia are recorded here at the end of stage 1.
+**Base Sepolia (chain id 84532)**, deployed 2026-10-15 with `contracts/script/Deploy.s.sol`. The addresses are also in [`contracts/deployments/84532.json`](contracts/deployments/84532.json), which the services load and check against the chain at startup, and every transaction is in [`contracts/broadcast/Deploy.s.sol/84532/run-latest.json`](contracts/broadcast/Deploy.s.sol/84532/run-latest.json).
+
+| Contract | Address |
+|---|---|
+| MockStablecoin (mUSDC) | [`0x69AC07E08782591417Ba77958869820563124590`](https://sepolia.basescan.org/address/0x69AC07E08782591417Ba77958869820563124590) |
+| Vault | [`0x94cB9FBcba05DA1991c512Df8c9DB256D164F788`](https://sepolia.basescan.org/address/0x94cB9FBcba05DA1991c512Df8c9DB256D164F788) |
+| ForwarderFactory | [`0xe3764E8c167133deFcb9cc1c400D87d01C92aaa4`](https://sepolia.basescan.org/address/0xe3764E8c167133deFcb9cc1c400D87d01C92aaa4) |
+| DepositForwarder (implementation) | [`0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C`](https://sepolia.basescan.org/address/0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C) |
+
+MockStablecoin deployment transaction: [`0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70`](https://sepolia.basescan.org/tx/0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70) (block 48167483). All seven deployment transactions succeeded.
+
+The deployer key is a throwaway test key kept outside the repository. It was funded from the Sepolia proof-of-work faucet and bridged to Base Sepolia through Base's L1StandardBridge.
 
 ## Run it
 

@@ -15,6 +15,8 @@
 /contracts/out/
 /contracts/cache/
 /contracts/broadcast/*/31337/
+/contracts/broadcast/*/*/dry-run/
+/contracts/broadcast/*/*/run-[0-9]*.json
 
 # Node / Next.js
 node_modules/
@@ -29,3 +31,4 @@ next-env.d.ts
 
 # rapid saves failing cases locally; they are not fixtures
 **/testdata/rapid/
+/contracts/broadcast/**/*.lock
