@@ -55,6 +55,7 @@ type Config struct {
 	FinalizedTag bool
 	Finality     uint64
 	BatchBlocks  uint64 // max blocks per log query
+	StartBlock   uint64 // first block to scan when the network has no cursor yet
 	PollInterval time.Duration
 }
 
@@ -103,7 +104,7 @@ func (w *Watcher) scan(ctx context.Context, head uint64) error {
 	q := store.New(w.Pool)
 	next, err := q.GetChainCursor(ctx, string(w.Cfg.Network))
 	if errors.Is(err, pgx.ErrNoRows) {
-		next = 0 // test chains are short; scan from genesis
+		next = int64(w.Cfg.StartBlock) //nolint:gosec // block numbers are far below 2^63
 	} else if err != nil {
 		return err
 	}

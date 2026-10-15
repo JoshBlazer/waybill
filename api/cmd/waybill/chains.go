@@ -95,6 +95,7 @@ func runWatcher(ctx context.Context, log *slog.Logger) error {
 	for n, c := range chains {
 		wcfg := watchPolicy(n)
 		wcfg.Token = c.deployment.Token
+		wcfg.StartBlock = c.deployment.StartBlock
 		w := &watcher.Watcher{Pool: pool, Chain: c.client, Cfg: wcfg, Log: log.With("network", n)}
 		wg.Add(1)
 		go func() {

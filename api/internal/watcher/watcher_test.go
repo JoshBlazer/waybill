@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math/big"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -49,7 +50,8 @@ type fakeChain struct {
 	logs      []types.Log
 	failHead  bool
 	failLogs  bool
-	finalized int64 // -1: the node cannot say
+	finalized int64    // -1: the node cannot say
+	queried   []uint64 // FromBlock of every log query
 }
 
 func newFakeChain() *fakeChain { return &fakeChain{versions: map[uint64]byte{}, finalized: -1} }
@@ -82,6 +84,7 @@ func (c *fakeChain) HeaderByNumber(_ context.Context, n *big.Int) (*types.Header
 func (c *fakeChain) FilterLogs(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.queried = append(c.queried, q.FromBlock.Uint64())
 	if c.failLogs {
 		return nil, errors.New("rpc: 503")
 	}
@@ -356,5 +359,24 @@ func TestWatcher_FinalizedTagUnknownFinalisesNothing(t *testing.T) {
 	}
 	if _, ps := r.state(t); ps["final"] != 0 {
 		t.Fatalf("payments %v; block 5 is above the finalized block 4", ps)
+	}
+}
+
+func TestWatcher_FirstScanStartsAtStartBlock(t *testing.T) {
+	r := setup(t)
+	r.w.Cfg.StartBlock = 1000
+	r.chain.transfer(1003, token, r.dep, 100_000_000, 0)
+	r.chain.head = 1004
+	if err := r.w.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.chain.queried) == 0 || slices.Min(r.chain.queried) != 1000 {
+		t.Fatalf("log queries started at %v; want the first at block 1000", r.chain.queried)
+	}
+	if st, ps := r.state(t); st != "received" || ps["detected"] != 1 {
+		t.Fatalf("invoice %s, payments %v; want received with one detected", st, ps)
+	}
+	if c := r.cursor(t); c != 1005 {
+		t.Fatalf("cursor = %d, want 1005", c)
 	}
 }

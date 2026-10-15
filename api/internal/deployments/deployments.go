@@ -33,6 +33,9 @@ type Deployment struct {
 	Vault          common.Address `json:"vault"`
 	Factory        common.Address `json:"factory"`
 	Implementation common.Address `json:"implementation"`
+	// StartBlock is at or before the block that created the contracts. The
+	// watcher begins there on its first run instead of at genesis.
+	StartBlock uint64 `json:"startBlock"`
 }
 
 // PredictDepositAddress returns the deposit address for salt on this network.
@@ -63,6 +66,11 @@ func Load(dir string, networks []safety.Network) (map[safety.Network]Deployment,
 		var zero common.Address
 		if d.Token == zero || d.Factory == zero || d.Implementation == zero || d.Vault == zero {
 			return nil, fmt.Errorf("deployments: %s is missing an address", path)
+		}
+		// Anvil starts empty, so 0 is right there. Anywhere else 0 would
+		// mean scanning the whole chain's history.
+		if d.StartBlock == 0 && n != safety.EVMAnvil {
+			return nil, fmt.Errorf("deployments: %s has no startBlock", path)
 		}
 		d.Network = n
 		out[n] = d
