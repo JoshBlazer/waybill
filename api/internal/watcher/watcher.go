@@ -102,13 +102,16 @@ func (w *Watcher) Tick(ctx context.Context) error {
 
 func (w *Watcher) scan(ctx context.Context, head uint64) error {
 	q := store.New(w.Pool)
+	from := w.Cfg.StartBlock // first run: begin where the contracts were deployed
 	next, err := q.GetChainCursor(ctx, string(w.Cfg.Network))
-	if errors.Is(err, pgx.ErrNoRows) {
-		next = int64(w.Cfg.StartBlock) //nolint:gosec // block numbers are far below 2^63
-	} else if err != nil {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
 		return err
+	default:
+		from = uint64(next) //nolint:gosec // cursors are only ever written from uint64 block numbers
 	}
-	for from := uint64(next); from <= head; {
+	for from <= head {
 		to := min(head, from+w.Cfg.BatchBlocks-1)
 		if err := w.scanRange(ctx, from, to); err != nil {
 			return err // cursor stays at `from`
