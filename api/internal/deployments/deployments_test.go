@@ -111,3 +111,34 @@ func TestLoad(t *testing.T) {
 		t.Fatal("Load accepted a missing file")
 	}
 }
+
+func TestLoad_StartBlock(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const addrs = `"token":"0x5FbDB2315678afecb367f032d93F642f64180aa3","vault":"0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512","factory":"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0","implementation":"0x75537828f2ce51be7289709686A69CbFDbB714F1"`
+
+	write("84532.json", `{"chainId":84532,"startBlock":48167483,`+addrs+`}`)
+	got, err := Load(dir, []safety.Network{"evm:84532"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := got["evm:84532"].StartBlock; b != 48167483 {
+		t.Fatalf("StartBlock = %d, want 48167483", b)
+	}
+
+	// A public network without a start block would be scanned from genesis.
+	write("11155111.json", `{"chainId":11155111,`+addrs+`}`)
+	if _, err := Load(dir, []safety.Network{"evm:11155111"}); err == nil || !strings.Contains(err.Error(), "startBlock") {
+		t.Fatalf("Load accepted a public network with no startBlock: %v", err)
+	}
+
+	// Anvil starts empty, so block 0 is its start block.
+	write("31337.json", `{"chainId":31337,`+addrs+`}`)
+	if _, err := Load(dir, []safety.Network{"evm:31337"}); err != nil {
+		t.Fatalf("Load rejected Anvil without startBlock: %v", err)
+	}
+}

@@ -21,6 +21,9 @@ contract Deploy is Script {
     uint128 internal constant PER_DAY = 50_000e6; // 50,000 mUSDC
 
     function run() external returns (MockStablecoin usdc, Vault vault, ForwarderFactory factory) {
+        // The block the script simulates against. The deployment transactions
+        // land in it or later, so the watcher can safely start here.
+        uint256 startBlock = block.number;
         vm.startBroadcast();
         address operator = msg.sender;
 
@@ -37,6 +40,7 @@ contract Deploy is Script {
 
         string memory key = "deployment";
         vm.serializeUint(key, "chainId", block.chainid);
+        vm.serializeUint(key, "startBlock", startBlock);
         vm.serializeAddress(key, "token", address(usdc));
         vm.serializeAddress(key, "vault", address(vault));
         vm.serializeAddress(key, "implementation", address(factory.implementation()));
