@@ -60,14 +60,14 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 
 ## Stage 3 — Naira settlement *(first public milestone)*
 
-- [ ] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider. *Interface, quoter and fake done (`api/internal/rates`); ADR-039 proposed.*
-- [ ] Rate lock at invoice creation; re-quote on expiry or late payment.
-- [ ] Identity and bank-name verification interface. Fake implementation, then a decision record choosing the sandbox provider. *Interface, name matching and fake done (`api/internal/bankverify`); ADR-040 proposed.*
+- [x] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider (ADR-039: ExchangeRate-API).
+- [ ] Rate lock at invoice creation; re-quote on expiry or late payment. *Lock done; re-quote comes with payouts.*
+- [x] Identity and bank-name verification interface. Fake implementation, then a decision record choosing the sandbox provider (ADR-040: Paystack Resolve Account Number).
 - [ ] **[H] Payout state machine.** The assistant provides: a design note, `statemachine.PayoutTransition` signature, and the exhaustive failing pair table.
 - [ ] Paystack test-mode payout: transfer recipient, transfer, reconcile by reference, `unknown` state.
-- [ ] Paystack incoming webhooks: verify, store raw, process once.
+- [ ] Paystack incoming webhooks: verify, store raw, process once. *Verify and store done; processing comes with payouts.*
 - [ ] Card and bank pay-in through Paystack test checkout.
-- [ ] Underpayment resolution flow.
+- [x] Underpayment resolution flow (top-up, or `POST /v1/invoices/{id}/accept-shortfall`).
 
 **Exit check:** a link is paid and a test-mode naira payout completes end to end, proven by an automated test against Paystack test mode.
 

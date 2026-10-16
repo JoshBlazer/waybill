@@ -102,3 +102,19 @@ func TestLoadFrom_SignerKeyNeverPrints(t *testing.T) {
 		t.Fatal("both key settings accepted; want an error")
 	}
 }
+
+func TestLoadFrom_Rates(t *testing.T) {
+	cfg, err := LoadFrom(env(map[string]string{}))
+	if err != nil || cfg.Rates != "fake" || cfg.RateSpreadBps != 150 {
+		t.Fatalf("defaults: %q %d %v; want fake, 150", cfg.Rates, cfg.RateSpreadBps, err)
+	}
+	cfg, err = LoadFrom(env(map[string]string{"WAYBILL_RATES": "exchangerate-api", "WAYBILL_RATE_SPREAD_BPS": "0"}))
+	if err != nil || cfg.Rates != "exchangerate-api" || cfg.RateSpreadBps != 0 {
+		t.Fatalf("set: %q %d %v", cfg.Rates, cfg.RateSpreadBps, err)
+	}
+	for _, bad := range []string{"-1", "10000", "1.5", "x"} {
+		if _, err := LoadFrom(env(map[string]string{"WAYBILL_RATE_SPREAD_BPS": bad})); err == nil {
+			t.Errorf("spread %q accepted", bad)
+		}
+	}
+}

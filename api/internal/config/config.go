@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/JoshBlazer/waybill/api/internal/safety"
@@ -41,6 +42,11 @@ type Config struct {
 	// like everything else.
 	SignerKey     Secret
 	SignerKeyFile string
+	// Rates is the naira rate source (ADR-039): "exchangerate-api" or
+	// "fake" (WAYBILL_RATES, default fake). RateSpreadBps is Waybill's
+	// margin (WAYBILL_RATE_SPREAD_BPS, default 150).
+	Rates         string
+	RateSpreadBps int64
 }
 
 // Secret is a string that never prints: fmt and slog show "[redacted]".
@@ -85,7 +91,16 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		WebURL:            strings.TrimRight(withDefault(getenv("WAYBILL_WEB_URL"), "http://localhost:3000"), "/"),
 		DevContractorKey:  getenv("WAYBILL_DEV_CONTRACTOR_KEY"),
 		SignerKey:         Secret(getenv("WAYBILL_SIGNER_KEY")),
+		Rates:             withDefault(getenv("WAYBILL_RATES"), "fake"),
+		RateSpreadBps:     150,
 		SignerKeyFile:     getenv("WAYBILL_SIGNER_KEY_FILE"),
+	}
+	if v := getenv("WAYBILL_RATE_SPREAD_BPS"); v != "" {
+		bps, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || bps < 0 || bps > 9999 {
+			return Config{}, fmt.Errorf("config: WAYBILL_RATE_SPREAD_BPS must be 0 to 9999, not %q", v)
+		}
+		cfg.RateSpreadBps = bps
 	}
 	if cfg.SignerKey != "" && cfg.SignerKeyFile != "" {
 		return Config{}, errors.New("config: set WAYBILL_SIGNER_KEY or WAYBILL_SIGNER_KEY_FILE, not both")

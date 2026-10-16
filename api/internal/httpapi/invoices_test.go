@@ -19,10 +19,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
+	"github.com/JoshBlazer/waybill/api/internal/bankverify"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/httpapi"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
+	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/JoshBlazer/waybill/api/internal/paystack"
+	"github.com/JoshBlazer/waybill/api/internal/rates"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 	"github.com/JoshBlazer/waybill/api/internal/testdb"
@@ -39,10 +43,21 @@ var anvilDeployment = deployments.Deployment{
 }
 
 type env struct {
-	pool *pgxpool.Pool
-	srv  *httptest.Server
-	key  string
+	pool       *pgxpool.Pool
+	srv        *httptest.Server
+	key        string
+	server     *httpapi.Server
+	contractor uuid.UUID
+	resolver   *bankverify.Fake
+	rates      *rates.Fake
 }
+
+// testPaystackKey is made up: the shape of a Paystack test key, not a real one.
+const testPaystackKey = "sk_test_waybill_fake_key_for_unit_tests_only"
+
+// payoutAccount resolves to the contractor (legal name Adaeze Okafor) in
+// the fake bank.
+var payoutAccount = bankverify.Account{BankCode: "058", AccountNumber: "0123456789"}
 
 func setup(t *testing.T) env {
 	t.Helper()
@@ -64,10 +79,26 @@ func setup(t *testing.T) env {
 	log := slog.New(slog.DiscardHandler)
 	broker := httpapi.NewBroker(pool, log)
 	go broker.Run(ctx)
+	resolver := &bankverify.Fake{Accounts: map[bankverify.Account]string{
+		payoutAccount: "OKAFOR ADAEZE CHIOMA",
+		{BankCode: "057", AccountNumber: "1111111111"}: "OKAFOR ADAEZE",
+		{BankCode: "057", AccountNumber: "2222222222"}: "BELLO TUNDE",
+	}}
+	fx := &rates.Fake{Rates: map[rates.Pair]money.Amount{invoice.NairaPair: money.FromInt64(155_000)}}
+	ps, err := paystack.New(testPaystackKey, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := &httpapi.Server{
-		DB:       store.New(pool),
-		Pool:     pool,
-		Invoices: &invoice.Service{Deployments: map[safety.Network]deployments.Deployment{"evm:31337": anvilDeployment}, Now: time.Now},
+		DB:   store.New(pool),
+		Pool: pool,
+		Invoices: &invoice.Service{
+			Deployments: map[safety.Network]deployments.Deployment{"evm:31337": anvilDeployment}, Now: time.Now,
+			Quoter: &rates.Quoter{Provider: fx, SpreadBps: 150, TTL: 48 * time.Hour, MaxAge: 26 * time.Hour},
+		},
+		Banks:    resolver,
+		Resolver: resolver,
+		Paystack: ps,
 		Tokens:   map[safety.Network]string{"evm:31337": evm.NormalizeAddress(anvilDeployment.Token)},
 		WebURL:   "http://web.test",
 		Broker:   broker,
@@ -76,7 +107,7 @@ func setup(t *testing.T) env {
 	}
 	srv := httptest.NewServer(httpapi.NewHandler(s))
 	t.Cleanup(srv.Close)
-	return env{pool: pool, srv: srv, key: k.Full}
+	return env{pool: pool, srv: srv, key: k.Full, server: s, contractor: c.ID, resolver: resolver, rates: fx}
 }
 
 const validBody = `{"description":"Design work, September","amount":"125.50","asset":"USDC","payout":"hold"}`
@@ -230,7 +261,7 @@ func TestCreateInvoice_Rejections(t *testing.T) {
 		{"empty description", "k5", "ok", strings.Replace(validBody, "Design work, September", "   ", 1), 422, "validation"},
 		{"long description", "k6", "ok", strings.Replace(validBody, "Design work, September", strings.Repeat("x", 501), 1), 422, "validation"},
 		{"unknown asset", "k7", "ok", strings.Replace(validBody, `"USDC"`, `"DOGE"`, 1), 422, "validation"},
-		{"naira not yet", "k8", "ok", strings.Replace(validBody, `"hold"`, `"naira"`, 1), 422, "payout-unavailable"},
+		{"naira without a bank account", "k8", "ok", strings.Replace(validBody, `"hold"`, `"naira"`, 1), 422, "no-bank-account"},
 	}
 	for _, tc := range cases {
 		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/invoices", strings.NewReader(tc.body))

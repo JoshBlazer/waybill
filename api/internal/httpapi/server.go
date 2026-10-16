@@ -11,7 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
+	"github.com/JoshBlazer/waybill/api/internal/bankverify"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
+	"github.com/JoshBlazer/waybill/api/internal/paystack"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 )
 
@@ -34,6 +36,11 @@ type Server struct {
 	// WebhookAllowPrivate accepts http and private hosts for webhook
 	// endpoints. Local development on Anvil only.
 	WebhookAllowPrivate bool
+
+	Banks    bankverify.BankLister // payout banks
+	Resolver bankverify.Resolver   // bank account names (ADR-040)
+	Paystack *paystack.Client      // webhook signatures; nil when no key is configured
+	Now      func() time.Time      // nil means time.Now
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -84,6 +91,11 @@ var authenticatedOperations = map[string]bool{
 	"ListWebhookEndpoints":  true,
 	"DeleteWebhookEndpoint": true,
 	"ListWebhookDeliveries": true,
+	"ListBanks":             true,
+	"GetBankAccount":        true,
+	"SetBankAccount":        true,
+	"GetInvoice":            true,
+	"AcceptShortfall":       true,
 }
 
 // IsAuthenticated reports whether an operation requires a contractor key.
@@ -109,11 +121,11 @@ func NewHandler(s *Server) http.Handler {
 			writeProblem(w, http.StatusInternalServerError, "internal", "Something went wrong on our side.", "")
 		},
 	})
-	return HandlerWithOptions(strict, StdHTTPServerOptions{
+	return keepRawBody(HandlerWithOptions(strict, StdHTTPServerOptions{
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeProblem(w, http.StatusBadRequest, "bad-request", "The request is missing or has an invalid parameter.", err.Error())
 		},
-	})
+	}))
 }
 
 // authMiddleware authenticates operations that require a contractor key and

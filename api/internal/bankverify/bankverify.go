@@ -135,7 +135,11 @@ func fold(r rune) rune {
 // Fake is a Resolver with fixed accounts, for tests and the local stack.
 type Fake struct {
 	Accounts map[Account]string
-	Err      error // returned by every call when set
+	// AnyName, when set, is the name of every well-formed account not in
+	// Accounts. The local stack sets it to the demo contractor's name, so
+	// any account number works there.
+	AnyName string
+	Err     error // returned by every call when set
 }
 
 // ResolveAccount returns the fixed name, or ErrAccountNotFound.
@@ -144,8 +148,40 @@ func (f *Fake) ResolveAccount(_ context.Context, a Account) (string, error) {
 		return "", f.Err
 	}
 	name, ok := f.Accounts[a]
+	if !ok && f.AnyName != "" {
+		return f.AnyName, nil
+	}
 	if !ok {
 		return "", fmt.Errorf("%w: %s at bank %s", ErrAccountNotFound, a.AccountNumber, a.BankCode)
 	}
 	return name, nil
+}
+
+// Bank is a bank that can receive payouts.
+type Bank struct {
+	Code string
+	Name string
+}
+
+// BankLister lists banks.
+type BankLister interface {
+	ListBanks(ctx context.Context) ([]Bank, error)
+}
+
+// FakeBanks is a fixed list of real Nigerian bank codes, for tests and the
+// local stack.
+var FakeBanks = []Bank{
+	{Code: "044", Name: "Access Bank"},
+	{Code: "011", Name: "First Bank of Nigeria"},
+	{Code: "058", Name: "Guaranty Trust Bank"},
+	{Code: "033", Name: "United Bank For Africa"},
+	{Code: "057", Name: "Zenith Bank"},
+}
+
+// ListBanks returns FakeBanks.
+func (f *Fake) ListBanks(context.Context) ([]Bank, error) {
+	if f.Err != nil {
+		return nil, f.Err
+	}
+	return FakeBanks, nil
 }

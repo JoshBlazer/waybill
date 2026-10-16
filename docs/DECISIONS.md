@@ -244,7 +244,7 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - `WAYBILL_WEBHOOK_ALLOW_PRIVATE=1` allows http and private hosts for local testing, and config refuses it unless every chain is Anvil.
 
 ## ADR-039 Rate provider: ExchangeRate-API's open endpoint
-**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only the `rates.Fake` provider exists.
+**Status:** Accepted, 2026-10-16 (owner chose it over CoinGecko and fake-only).
 **Context:** A naira invoice locks a USDC→NGN rate when it is created (PRODUCT §4.1). `rates.Provider` returns a mid rate; `rates.Quoter` applies a spread and an expiry and refuses rates that are too old. Waybill runs on test money, so the rate needs to be realistic, not tradable. Paystack, already the payout provider, publishes no exchange rates.
 **Options considered:**
 - **ExchangeRate-API open endpoint** (`GET https://open.er-api.com/v6/latest/USD`). No key and no signup. Updated once a day; rate limited; attribution required; the data may be cached but not redistributed.
@@ -254,7 +254,26 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 **Consequences:** One outbound HTTPS dependency, read-only and without a secret. A daily mid rate is not a market quote, which is acceptable for test money and stated on the page. Treating USDC as exactly 1 USD ignores small depegs; recorded in RISKS.md. If the endpoint is down, no naira quote is made and invoices can still be created with payout *hold* (I12).
 
 ## ADR-040 Bank-name verification: Paystack Resolve Account Number
-**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only `bankverify.Fake` exists.
+**Status:** Accepted, 2026-10-16.
 **Context:** A contractor's bank account must belong to them before Waybill pays into it (RISKS §2). `bankverify.Resolver` asks for the account name; `bankverify.NameMatches` compares it with the legal name (every legal name part must appear, in any order; no fuzzy matching).
 **Decision (proposed):** Use Paystack's `GET /bank/resolve` through the same test-mode key as payouts (`paystack.Client` already implements `bankverify.Resolver`). No new vendor and no new secret.
 **Consequences:** Test-mode resolution returns test data, not real bank records, which is what a test-money project wants. A dedicated identity provider (BVN/NIN checks) is out of scope; recorded as a known gap in RISKS.md for any move to live money. A failed lookup is "could not verify", never "verified" (I12).
+
+## ADR-041 Stage 3 public API: bank accounts, quotes, payouts, checkout, Paystack callback
+**Status:** Accepted, 2026-10-16 (owner approved the endpoints and the four choices in PR #17). `createInvoice` also gains a 503 for "no rate".
+**Context:** Stage 3 pays contractors in naira. Contractors need to register a verified bank account, see the rate locked on a naira invoice, follow the payout and accept an underpayment. Payers need to pay by card or bank transfer. Paystack needs somewhere to send its events.
+**Decision (proposed):** OpenAPI 0.4.0 adds seven operations:
+- Contractor-authenticated: `GET /v1/banks`, `GET` and `PUT /v1/me/bank-account`, `GET /v1/invoices/{id}`, `POST /v1/invoices/{id}/accept-shortfall`.
+- Public: `POST /v1/pay/{code}/checkout`.
+- Provider callback: `POST /v1/providers/paystack/webhook`.
+
+`Invoice` gains an optional `quote` (rate as an exact Amount of kobo per USDC, the naira amount, spread, source, expiry) and an optional `payoutStatus`. `payout: naira` stops returning 422: it needs a verified bank account and an available rate.
+- A bank account is saved only if the bank's name for it matches the legal name. If the bank cannot be reached, the answer is 503 and nothing is saved.
+- Payouts to a changed account wait 24 hours (RISKS §2, account takeover).
+- The Paystack callback checks the signature before reading the body, stores the raw event, and processes each event id once (I14).
+**Not dependent on webhooks.** Paystack delivers webhooks only to a public HTTPS URL, which the local stack does not have, and exposing it would need a tunnel (infrastructure, not proposed here). The worker therefore confirms every payout and checkout by asking Paystack by reference (`/transfer/verify/:reference`, `/transaction/verify/:reference`). Webhooks, when they can arrive, only make it faster. The stage 3 exit-check test uses this reconciliation path against Paystack test mode.
+**Consequences:**
+- Schema: `contractor_bank_accounts`, `rate_quotes` (and `invoices.rate_quote_id`), `payouts` and `payout_events`, `checkouts`, `provider_events` (unique `(provider, event_id)`).
+- The ledger gains NGN accounts (clearing, FX position, provider float). The ledger schema is unchanged.
+- Payout reference = payout id, so Paystack itself refuses a duplicate.
+- Account numbers are shown only as their last four digits after saving.

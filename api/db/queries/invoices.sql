@@ -35,8 +35,8 @@ SELECT * FROM chain_tokens WHERE network = @network;
 -- Invoices ----------------------------------------------------------------
 
 -- name: InsertInvoice :one
-INSERT INTO invoices (id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, expires_at)
-VALUES (@id, @contractor_id, @tracking_code, @description, @asset_code, @amount, @payout_mode, @expires_at)
+INSERT INTO invoices (id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, expires_at, rate_quote_id)
+VALUES (@id, @contractor_id, @tracking_code, @description, @asset_code, @amount, @payout_mode, @expires_at, sqlc.narg(rate_quote_id))
 RETURNING *;
 
 -- name: InsertDepositAddress :exec

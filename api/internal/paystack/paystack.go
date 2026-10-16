@@ -278,3 +278,23 @@ func (c *Client) VerifyWebhook(body []byte, signature string) error {
 	}
 	return nil
 }
+
+// ListBanks returns the Nigerian banks that can receive NGN transfers
+// (GET /bank). It implements bankverify.BankLister.
+func (c *Client) ListBanks(ctx context.Context) ([]bankverify.Bank, error) {
+	var data []struct {
+		Name   string `json:"name"`
+		Code   string `json:"code"`
+		Active bool   `json:"active"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/bank?country=nigeria&currency=NGN&perPage=100", nil, &data); err != nil {
+		return nil, err
+	}
+	out := make([]bankverify.Bank, 0, len(data))
+	for _, b := range data {
+		if b.Active && b.Code != "" {
+			out = append(out, bankverify.Bank{Code: b.Code, Name: b.Name})
+		}
+	}
+	return out, nil
+}
