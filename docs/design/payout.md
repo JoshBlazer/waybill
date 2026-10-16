@@ -1,6 +1,6 @@
 # Design note: the payout state machine
 
-**Status:** designed. The signature and failing tests are in place; the owner implements `PayoutTransition` (hand-written module, see CLAUDE.md).
+**Status:** implemented.
 **Code:** `api/internal/statemachine/payout.go` (types and signature), tests in `payout_test.go`.
 **Done means:** `go test ./internal/statemachine/` passes, including the 4 payout tests.
 

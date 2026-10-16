@@ -1,10 +1,6 @@
 package statemachine
 
-import "errors"
-
-// ErrNotImplemented marks the hand-written payout machine before it is
-// written.
-var ErrNotImplemented = errors.New("statemachine: not implemented")
+import "fmt"
 
 // PayoutState is the lifecycle state of a payout: the conversion of a
 // settled invoice's stablecoin to naira and the bank transfer that follows.
@@ -58,15 +54,46 @@ var PayoutEvents = []PayoutEvent{
 	EvProviderFailed, EvProviderReversed, EvRetryApproved, EvPayoutCancel,
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// HAND-WRITTEN MODULE. The project owner implements PayoutTransition.
-// Design: docs/design/payout.md. The tests in payout_test.go define "done";
-// they fail until then. Pure: no I/O, no clock (TestStatemachine_NoIOImports).
-// ─────────────────────────────────────────────────────────────────────────
+type payoutKey struct {
+	from PayoutState
+	ev   PayoutEvent
+}
+
+// payoutTransitions is the complete table from docs/ARCHITECTURE.md §5.2
+// and docs/design/payout.md. Anything absent is illegal.
+//
+// A provider timeout is unknown, never failed (I12), and only
+// reconciliation by reference leaves unknown. Cancelling is possible only
+// while nothing is with the provider.
+var payoutTransitions = map[payoutKey]PayoutState{
+	{PayoutQueued, EvConverted}:     PayoutConverted,
+	{PayoutQueued, EvHoldRequested}: PayoutHeld,
+	{PayoutQueued, EvPayoutCancel}:  PayoutCancelled,
+
+	{PayoutConverted, EvSubmit}:       PayoutSubmitting,
+	{PayoutConverted, EvPayoutCancel}: PayoutCancelled,
+
+	{PayoutSubmitting, EvProviderAccepted}: PayoutSubmitted,
+	{PayoutSubmitting, EvProviderRejected}: PayoutFailed,
+	{PayoutSubmitting, EvProviderUnknown}:  PayoutUnknown,
+
+	{PayoutUnknown, EvReconciledAccepted}: PayoutSubmitted,
+	{PayoutUnknown, EvReconciledNotFound}: PayoutConverted, // resubmitted with the same reference
+
+	{PayoutSubmitted, EvProviderSucceeded}: PayoutSucceeded,
+	{PayoutSubmitted, EvProviderFailed}:    PayoutFailed,
+
+	{PayoutSucceeded, EvProviderReversed}: PayoutReversed,
+
+	{PayoutFailed, EvRetryApproved}: PayoutConverted,
+}
 
 // PayoutTransition returns the state that follows from on event ev, or
 // ErrIllegalTransition (wrapped, matched with errors.Is) with from
-// unchanged for every pair not in the table in docs/ARCHITECTURE.md §5.2.
+// unchanged for every pair not in the table. Pure: no I/O, no clock.
 func PayoutTransition(from PayoutState, ev PayoutEvent) (PayoutState, error) {
-	return from, ErrNotImplemented
+	if to, ok := payoutTransitions[payoutKey{from, ev}]; ok {
+		return to, nil
+	}
+	return from, fmt.Errorf("%w: payout %s on %s", ErrIllegalTransition, from, ev)
 }
