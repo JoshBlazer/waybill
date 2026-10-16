@@ -64,12 +64,15 @@ func setupChains(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log
 // watchPolicy is how each network is watched. Anvil has no consensus, so
 // "final" is a depth; public test networks use their finalized block.
 func watchPolicy(n safety.Network) watcher.Config {
-	cfg := watcher.Config{Network: n, Asset: money.USDC, BatchBlocks: 500}
+	cfg := watcher.Config{Network: n, Asset: money.USDC}
 	switch n {
 	case safety.EVMAnvil:
 		cfg.Confirmations, cfg.Finality, cfg.PollInterval = 2, 5, time.Second
+		cfg.BatchBlocks = 500
 	default:
 		cfg.Confirmations, cfg.FinalizedTag, cfg.PollInterval = 3, true, 3*time.Second
+		// Public RPCs cap eth_getLogs ranges; sepolia.base.org allows 200 blocks.
+		cfg.BatchBlocks = 200
 	}
 	return cfg
 }
