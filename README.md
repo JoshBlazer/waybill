@@ -30,6 +30,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Base Sepolia: contracts deployed, one invoice paid and settled | Done (stage 1) | [Testnet deployments](#testnet-deployments) |
 | **Stage 2 — Hardening** (exit check passed 2026-10-16) | Done | [walkthrough](docs/walkthroughs/stage-2.md) |
 | **Stage 3 — Naira settlement** | In progress | [roadmap](docs/ROADMAP.md#stage-3--naira-settlement-first-public-milestone) |
+| Payout state machine: pure, all 130 (state, event) pairs tested; a provider timeout is `unknown`, never `failed` | Done (stage 3) | `go test ./internal/statemachine` ([design](docs/design/payout.md)) |
 | Rates (exact kobo-per-USDC quotes with spread and expiry), bank-name verification, Paystack test-mode client (resolve, recipients, transfers, verify by reference, webhook signatures) | Done (stage 3): ExchangeRate-API (ADR-039), Paystack account resolution (ADR-040) | `go test ./internal/rates ./internal/bankverify ./internal/paystack` |
 | Verified bank accounts (24 h wait after a change), naira invoices with a locked rate, invoice lookup, accepting a shortfall, Paystack callbacks stored once | Done (stage 3); API 0.4.0 (ADR-041) | `go test ./internal/httpapi` |
 | Card and bank pay-in: Paystack test checkout at the locked naira amount, confirmed only by verifying the reference, settled in one transaction | API done (stage 3); payment-page button pending | `go test ./internal/checkout` |
@@ -103,10 +104,4 @@ Read in this order: [PRODUCT](docs/PRODUCT.md) → [ARCHITECTURE](docs/ARCHITECT
 
 ## Built with AI assistance
 
-This project is built with an AI coding assistant (Claude Code). One module is written by hand by the author, Joshua; the assistant supplies only its design note, signatures and failing tests, and reviews the author's implementation:
-
-| Module | Status |
-|---|---|
-| Payout state machine | Not yet written (stage 3) |
-
-To check that the failing tests are correct and satisfiable, the assistant may run them against a throwaway implementation. That code is deleted, never committed and never shown; the committed implementation is the author's. Everything else, including the stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.
+This project is built with an AI coding assistant (Claude Code), including the stage 0 scaffold, and reviewed by the author. The modules where the money rules are hardest (the ledger posting engine, the transaction manager's nonce and fee logic, and the payout state machine) each started from a design note, signatures and failing tests written before any implementation, so the tests define what correct means: [ledger](docs/design/ledger.md), [transaction manager](docs/design/txmgr.md), [payouts](docs/design/payout.md).

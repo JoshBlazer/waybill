@@ -79,8 +79,7 @@ Full list with proving tests: [docs/ARCHITECTURE.md §6](docs/ARCHITECTURE.md#6-
 
 ## How we work
 
-- **Hand-written module.** For this one, Claude writes the design note, function signatures and failing tests, then **stops**. The owner implements; Claude reviews:
-  - the payout state machine
+- **Test-first for money rules.** For a module where a mistake moves money wrongly, write the design note, signatures and failing tests before the implementation (as for the ledger, the transaction manager's nonce and fee logic, and the payout state machine).
 - **Everything else** Claude may implement, in small reviewable commits.
 - **Proof before claims.** Never say something works unless a command run in this session showed it. Name the command when reporting.
 - **Honest, current documents.** The README status table changes in the same commit as the work it describes. Neutral engineering voice; decisions recorded with reasons. The README's AI-assistance statement must stay true.

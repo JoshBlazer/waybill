@@ -2,8 +2,6 @@
 
 Each stage ends only when its exit check has been run and has passed. The exit-check command and its result are recorded in the stage's walkthrough. Every stage ends with a walkthrough of what was built and why, plus ten interview questions about it.
 
-Marks: **[H]** means the project owner writes the implementation by hand. For these tasks the assistant writes the design note, the function signatures and the failing tests, then stops and reviews the owner's code.
-
 ## Stage 0 — Foundations
 
 - [x] Product, architecture, design, roadmap, decisions and risks documents; `CLAUDE.md`; README with status table.
@@ -63,7 +61,7 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 - [x] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider (ADR-039: ExchangeRate-API).
 - [ ] Rate lock at invoice creation; re-quote on expiry or late payment. *Lock done; re-quote comes with payouts.*
 - [x] Identity and bank-name verification interface. Fake implementation, then a decision record choosing the sandbox provider (ADR-040: Paystack Resolve Account Number).
-- [ ] **[H] Payout state machine.** The assistant provides: a design note, `statemachine.PayoutTransition` signature, and the exhaustive failing pair table.
+- [x] Payout state machine: design note, `statemachine.PayoutTransition`, and the exhaustive pair table.
 - [ ] Paystack test-mode payout: transfer recipient, transfer, reconcile by reference, `unknown` state.
 - [ ] Paystack incoming webhooks: verify, store raw, process once. *Verify and store done; processing comes with payouts.*
 - [ ] Card and bank pay-in through Paystack test checkout. *API and reconciliation done (`api/internal/checkout`); the payment page button needs the link to say it can be paid in naira.*

@@ -184,9 +184,9 @@ stateDiagram-v2
 
 Implemented in `api/internal/tracking` (`Build`), with every invoice state covered by `TestBuild_EveryInvoiceState`.
 
-### 5.2 Payout (hand-written by the project owner)
+### 5.2 Payout
 
-The design note, signatures and failing tests are provided. The implementation is written by hand (see [CLAUDE.md](../CLAUDE.md)).
+Design note: [docs/design/payout.md](design/payout.md). `statemachine.PayoutTransition` is pure and tested on every pair.
 
 | From | Event | To |
 |---|---|---|
@@ -218,12 +218,12 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I4 | **Ledger is append-only.** | Trigger rejects `UPDATE`/`DELETE` on `journal_entries` and `postings`; app role lacks those grants | `TestLedger_UpdateAndDeleteRejected`, `TestLedger_CannotAddPostingsToCommittedEntry`, `TestLedger_BalanceCacheCannotBeWrittenDirectly` *(exist, branch)*; separate app role without UPDATE/DELETE grants *(stage 1)* |
 | I5 | **Any sequence of postings keeps every entry balanced and the trial balance at zero.** | Posting engine | `rapid` property `TestLedger_TrialBalanceAlwaysZero` *(exists, passes)* |
 | I6 | **Money-moving requests are idempotent.** Same key and same body give the same response; same key and a different body give 422. | `idempotency_keys` written in the same tx as the effect | `TestCreateInvoice_IdempotentRetry`, `TestCreateInvoice_KeyReusedWithDifferentBody`, `TestCreateInvoice_ConcurrentSameKeyCreatesOne`, `TestCreateInvoice_FailedRequestDoesNotBurnKey` in `internal/httpapi` *(exist)* |
-| I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs` (72 pairs), `TestStatemachine_NoIOImports` in `api/internal/statemachine` *(exist)*; `TestPayout_AllPairs` *(stage 3)* |
+| I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs` (72 pairs), `TestStatemachine_NoIOImports` in `api/internal/statemachine` *(exist)*; `TestPayout_AllPairs` (130 pairs) *(exists)* |
 | I8 | **A payment is not final when first seen; reorgs reverse.** | Watcher: detected → confirmed (N blocks) → final (`finalized` tag; depth on Anvil); a payment whose block hash changed is never confirmed; a reorg walks back to the common ancestor, reverses confirmed payments and rescans | `TestWatcher_ReorgReversesConfirmedPayment` (Anvil snapshot/revert via testcontainers), `TestWatcher_DoesNotConfirmReplacedBlock`, `TestWatcher_ReorgUndoesConfirmedPayment`, `TestWatcher_ReorgReincludedPaymentCountsOnce`, `TestWatcher_ReorgKeepsPaymentsOutsideReplacedBlocks`, `TestWatcher_ReorgRPCErrorChangesNothing` *(exist)* |
 | I9 | **Duplicate sightings are no-ops.** | Unique `(network, tx_hash, log_index)` among payments that are not reorged | `TestWatcher_DuplicateLogIsNoop` *(exists)* |
 | I10 | **One writer per signing key; no nonce is used twice.** | `signer_nonces` lease; unique `(signer, network, nonce)` | `TestTxMgr_ConcurrentSendersNeverShareNonce`, `TestTxMgr_SubmitIsIdempotentPerRef`, `TestTxMgr_OnlyLeaseHolderTicks` *(exist)*; `outbound_txs` unique on `(signer, network, nonce)` |
 | I11 | **Stuck transactions are replaced by raising both fees by at least the node's minimum bump; every hash is recorded.** | txmgr fee logic | `TestTxMgr_ReplacementBumpsBothFees` (`rapid`), `TestTxMgr_StuckTransactionIsReplaced` (Anvil: replaced, mined, every hash kept) *(exist)* |
-| I12 | **"Couldn't find out" is distinct from "no".** An RPC or provider error never becomes "not paid" or "not sent". | Tri-state results (`Known(true)`, `Known(false)`, `Unknown(err)`); payout `unknown` state | `TestWatcher_RPCErrorDoesNotAdvance`, `TestWatcher_FinalizedTagUnknownFinalisesNothing`, `TestCheck_RPCUnreachableFailsClosed` *(exist)*; `TestPayout_ProviderTimeoutGoesUnknownNotFailed` *(stage 3)* |
+| I12 | **"Couldn't find out" is distinct from "no".** An RPC or provider error never becomes "not paid" or "not sent". | Tri-state results (`Known(true)`, `Known(false)`, `Unknown(err)`); payout `unknown` state | `TestWatcher_RPCErrorDoesNotAdvance`, `TestWatcher_FinalizedTagUnknownFinalisesNothing`, `TestCheck_RPCUnreachableFailsClosed` *(exist)*; `TestPayout_ProviderTimeoutGoesUnknownNotFailed` *(exists)* |
 | I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff`, `TestWebhook_PrivateAddressAtDeliveryIsRefused` in `api/internal/webhook` *(exist)* |
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce` *(stage 3)* |
 | I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `txmgr.Signer` interface; `LocalSigner` shows only its address in `String()`/`GoString()`/`LogValue()`; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(exists)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
