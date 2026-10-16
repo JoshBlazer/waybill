@@ -1,7 +1,7 @@
 # Design note: transaction manager nonces and fees
 
 **Status:** designed. Signatures and failing tests are in place; the owner implements `nonce.go` and `fees.go` (hand-written module, see CLAUDE.md).
-**Code:** `api/db/migrations/00005_signer_nonces.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (provided: `txmgr.go`, `lease.go`; hand-written: `nonce.go`, `fees.go`).
+**Code:** `api/db/migrations/00006_signer_nonces.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (provided: `txmgr.go`, `lease.go`; hand-written: `nonce.go`, `fees.go`).
 **Done means:** `go test ./internal/txmgr/` passes: 6 nonce tests (including the I10 concurrency test), 2 lease and schema tests, and 5 fee tests (3 of them `rapid` properties, including I11).
 
 ## 1. What the transaction manager is for
@@ -17,7 +17,7 @@ Stage 1 met both problems by hand on Base Sepolia. A public node reported a stal
 
 | Piece | Written by | File |
 |---|---|---|
-| `signer_nonces` table and its never-decreases trigger | assistant | `00005_signer_nonces.sql` |
+| `signer_nonces` table and its never-decreases trigger | assistant | `00006_signer_nonces.sql` |
 | `AcquireLease`: single-writer lease per key | assistant | `lease.go` |
 | `NextNonce` | **owner** | `nonce.go` |
 | `InitialFees`, `Replacement` | **owner** | `fees.go` |
