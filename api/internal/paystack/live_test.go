@@ -78,3 +78,34 @@ func envOr(k, def string) string {
 	}
 	return def
 }
+
+// TestLive_CheckoutStartAndVerify starts a real test-mode checkout and
+// verifies it by reference. Nobody pays it, so Paystack reports it as not
+// yet paid. Runs only when PAYSTACK_SECRET_KEY holds a test key.
+func TestLive_CheckoutStartAndVerify(t *testing.T) {
+	key := os.Getenv("PAYSTACK_SECRET_KEY")
+	if key == "" {
+		t.Skip("PAYSTACK_SECRET_KEY not set; skipping the live Paystack test-mode check")
+	}
+	c, err := paystack.New(key, "", 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	ref := "chk_live_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	u, err := c.InitializeTransaction(ctx, paystack.Charge{
+		Reference: ref, Amount: money.FromInt64(500_000), Email: "pay-live-test@example.com", CallbackURL: "http://localhost:3000/",
+	})
+	if err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+	t.Logf("checkout page: %s", u)
+	st, err := c.VerifyTransaction(ctx, ref)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if st.Status == "success" || st.Amount.String() != "500000" {
+		t.Fatalf("unpaid checkout reported as %+v", st)
+	}
+	t.Logf("verified unpaid checkout: status %q", st.Status)
+}

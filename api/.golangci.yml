@@ -18,8 +18,9 @@ linters:
   settings:
     misspell:
       locale: UK
-      # "finalize" is the Ethereum term (the `finalized` block tag).
-      ignore-rules: [color, behavior, finalize, finalized, finalizes, finalizing]
+      # "finalize" is the Ethereum term (the `finalized` block tag);
+      # "initialize" is Paystack's (POST /transaction/initialize).
+      ignore-rules: [color, behavior, finalize, finalized, finalizes, finalizing, initialize, initialized, initializes]
     revive:
       rules:
         - name: exported

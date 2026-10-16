@@ -298,3 +298,82 @@ func (c *Client) ListBanks(ctx context.Context) ([]bankverify.Bank, error) {
 	}
 	return out, nil
 }
+
+// Charge is a naira payment a payer makes on Paystack's checkout page.
+type Charge struct {
+	Reference   string       // the checkout id: the same on every attempt
+	Amount      money.Amount // kobo
+	Email       string       // Paystack requires one; payers have no account, so callers pass a placeholder
+	CallbackURL string       // where Paystack sends the payer afterwards
+}
+
+// ChargeStatus is Paystack's view of a payment.
+type ChargeStatus struct {
+	Status   string // success, failed, abandoned, ongoing, pending, reversed, …
+	ID       string // Paystack's transaction id
+	Amount   money.Amount
+	Currency string
+	PaidAt   string
+}
+
+// InitializeTransaction starts a checkout (POST /transaction/initialize)
+// and returns the page to send the payer to.
+func (c *Client) InitializeTransaction(ctx context.Context, ch Charge) (string, error) {
+	if !reference.MatchString(ch.Reference) {
+		return "", fmt.Errorf("paystack: reference %q must be 16 to 100 lowercase letters, digits, - or _", ch.Reference)
+	}
+	if ch.Amount.Sign() <= 0 {
+		return "", fmt.Errorf("paystack: amount %s kobo is not positive", ch.Amount)
+	}
+	var data struct {
+		AuthorizationURL string `json:"authorization_url"`
+		Reference        string `json:"reference"`
+	}
+	err := c.call(ctx, http.MethodPost, "/transaction/initialize", map[string]any{
+		"email": ch.Email, "amount": json.Number(ch.Amount.String()), "reference": ch.Reference,
+		"currency": "NGN", "callback_url": ch.CallbackURL, "channels": []string{"card", "bank", "bank_transfer", "ussd"},
+	}, &data)
+	if err != nil {
+		return "", err
+	}
+	if data.Reference != ch.Reference || !strings.HasPrefix(data.AuthorizationURL, "https://") {
+		return "", fmt.Errorf("%w: initialize answered reference %q, url %q", ErrUnknown, data.Reference, data.AuthorizationURL)
+	}
+	return data.AuthorizationURL, nil
+}
+
+// VerifyTransaction looks a payment up by reference (GET
+// /transaction/verify/:reference). Only this, never a webhook body alone,
+// decides that a payment succeeded.
+func (c *Client) VerifyTransaction(ctx context.Context, ref string) (ChargeStatus, error) {
+	if !reference.MatchString(ref) {
+		return ChargeStatus{}, fmt.Errorf("paystack: reference %q is not valid", ref)
+	}
+	var data struct {
+		ID        json.Number `json:"id"`
+		Status    string      `json:"status"`
+		Reference string      `json:"reference"`
+		Amount    json.Number `json:"amount"`
+		Currency  string      `json:"currency"`
+		PaidAt    string      `json:"paid_at"`
+	}
+	err := c.call(ctx, http.MethodGet, "/transaction/verify/"+url.PathEscape(ref), nil, &data)
+	if errors.Is(err, ErrRejected) && strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return ChargeStatus{}, fmt.Errorf("%w: %w", ErrNotFound, err)
+	}
+	if err != nil {
+		return ChargeStatus{}, err
+	}
+	if data.Reference != ref {
+		return ChargeStatus{}, fmt.Errorf("%w: answer is for reference %q, asked about %q", ErrUnknown, data.Reference, ref)
+	}
+	amt := money.Zero
+	if data.Amount != "" {
+		a, err := money.ParseMinor(data.Amount.String())
+		if err != nil {
+			return ChargeStatus{}, fmt.Errorf("%w: amount %q", ErrUnknown, data.Amount)
+		}
+		amt = a
+	}
+	return ChargeStatus{Status: data.Status, ID: data.ID.String(), Amount: amt, Currency: data.Currency, PaidAt: data.PaidAt}, nil
+}

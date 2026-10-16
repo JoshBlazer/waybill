@@ -17,6 +17,7 @@ import (
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/checkout"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/money"
 	"github.com/JoshBlazer/waybill/api/internal/statemachine"
@@ -239,10 +240,31 @@ func (s *Server) AcceptShortfall(ctx context.Context, req AcceptShortfallRequest
 	return AcceptShortfall200JSONResponse(out), nil
 }
 
-// StartCheckout is not available until card pay-in is built.
-func (s *Server) StartCheckout(_ context.Context, _ StartCheckoutRequestObject) (StartCheckoutResponseObject, error) {
-	return StartCheckout503ApplicationProblemPlusJSONResponse(problem(503, "checkout-unavailable",
-		"Card and bank transfer payments are not available yet. Pay in stablecoin instead.", "")), nil
+// StartCheckout starts (or returns the open) Paystack checkout for a naira
+// payment link.
+func (s *Server) StartCheckout(ctx context.Context, req StartCheckoutRequestObject) (StartCheckoutResponseObject, error) {
+	unavailable := StartCheckout503ApplicationProblemPlusJSONResponse(problem(503, "checkout-unavailable",
+		"Card and bank transfer payments aren't available right now. You can still pay in stablecoin.", ""))
+	if s.Checkout == nil {
+		return unavailable, nil
+	}
+	c, _, err := s.Checkout.Start(ctx, req.Code)
+	switch {
+	case errors.Is(err, checkout.ErrNotFound):
+		return StartCheckout404ApplicationProblemPlusJSONResponse{ProblemApplicationProblemPlusJSONResponse(notFound())}, nil
+	case errors.Is(err, checkout.ErrNotPayable):
+		return StartCheckout409ApplicationProblemPlusJSONResponse(problem(409, "not-payable-by-card",
+			"This link can't be paid by card or bank transfer.", err.Error())), nil
+	case errors.Is(err, checkout.ErrUnavailable):
+		s.logger().WarnContext(ctx, "checkout: unavailable", "err", err)
+		return unavailable, nil
+	case err != nil:
+		return nil, err
+	}
+	return StartCheckout200JSONResponse(Checkout{
+		AuthorizationUrl: *c.AuthorizationUrl, Reference: c.Reference, ExpiresAt: c.ExpiresAt.UTC(),
+		Amount: Amount{Asset: string(money.NGN.Code), Minor: c.Amount.String(), Scale: int(money.NGN.Scale)},
+	}), nil
 }
 
 type rawBodyKey struct{}

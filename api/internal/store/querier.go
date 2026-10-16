@@ -27,6 +27,8 @@ type Querier interface {
 	// Inserts the key inside the caller's transaction. A concurrent request
 	// with the same key blocks here until the first transaction ends.
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (string, error)
+	// failed or expired; only from open.
+	CloseCheckout(ctx context.Context, arg CloseCheckoutParams) error
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	// Only the current lease holder can finish a job.
 	CompleteOutbox(ctx context.Context, arg CompleteOutboxParams) (int64, error)
@@ -51,6 +53,7 @@ type Querier interface {
 	GetBankAccount(ctx context.Context, contractorID uuid.UUID) (ContractorBankAccount, error)
 	GetChainCursor(ctx context.Context, network string) (int64, error)
 	GetChainTip(ctx context.Context, network string) (GetChainTipRow, error)
+	GetCheckoutByReference(ctx context.Context, reference string) (Checkout, error)
 	GetContractor(ctx context.Context, id uuid.UUID) (Contractor, error)
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
@@ -59,6 +62,8 @@ type Querier interface {
 	GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
+	// Card and bank checkout. See ADR-041.
+	GetOpenCheckout(ctx context.Context, invoiceID uuid.UUID) (Checkout, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
 	GetRateQuote(ctx context.Context, id uuid.UUID) (RateQuote, error)
@@ -70,6 +75,8 @@ type Querier interface {
 	// Creates an account, or returns the existing one with the same code. The
 	// caller compares the returned row with what it asked for.
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
+	// Another open checkout for the invoice wins the race: no row is returned.
+	InsertCheckout(ctx context.Context, arg InsertCheckoutParams) (Checkout, error)
 	InsertDepositAddress(ctx context.Context, arg InsertDepositAddressParams) error
 	// A transaction that failed before a nonce was assigned. Nothing was sent.
 	InsertFailedOutboundTx(ctx context.Context, arg InsertFailedOutboundTxParams) (OutboundTx, error)
@@ -105,11 +112,13 @@ type Querier interface {
 	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
+	ListOpenCheckouts(ctx context.Context) ([]Checkout, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
+	ListUnprocessedProviderEvents(ctx context.Context, arg ListUnprocessedProviderEventsParams) ([]ProviderEvent, error)
 	// Sweeping --------------------------------------------------------------
 	// Final payments on a network with no sweep job yet (the job dedupe key is
 	// sweep:<payment id>).
@@ -120,15 +129,18 @@ type Querier interface {
 	ListWatchedAddresses(ctx context.Context, network string) ([]ListWatchedAddressesRow, error)
 	ListWebhookDeliveries(ctx context.Context, arg ListWebhookDeliveriesParams) ([]ListWebhookDeliveriesRow, error)
 	ListWebhookEndpoints(ctx context.Context, contractorID uuid.UUID) ([]WebhookEndpoint, error)
+	LockCheckout(ctx context.Context, id uuid.UUID) (Checkout, error)
 	// Serialises revocations for one contractor, so two concurrent revokes
 	// cannot each see the other key as "still active" and remove both.
 	LockContractorAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]LockContractorAPIKeysRow, error)
 	// Locks the key's row until the caller's transaction ends. db_now is the
 	// database clock, so lease checks never depend on the caller's clock.
 	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
+	MarkCheckoutPaid(ctx context.Context, arg MarkCheckoutPaidParams) error
 	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)
+	MarkProviderEventProcessed(ctx context.Context, id int64) error
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
@@ -136,6 +148,7 @@ type Querier interface {
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
+	SetCheckoutURL(ctx context.Context, arg SetCheckoutURLParams) (Checkout, error)
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)

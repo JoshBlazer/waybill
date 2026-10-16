@@ -12,6 +12,7 @@ import (
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/checkout"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/paystack"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
@@ -40,6 +41,7 @@ type Server struct {
 	Banks    bankverify.BankLister // payout banks
 	Resolver bankverify.Resolver   // bank account names (ADR-040)
 	Paystack *paystack.Client      // webhook signatures; nil when no key is configured
+	Checkout *checkout.Service     // card and bank pay-in; nil disables it
 	Now      func() time.Time      // nil means time.Now
 }
 

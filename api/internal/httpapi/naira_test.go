@@ -7,12 +7,15 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/checkout"
+	"github.com/JoshBlazer/waybill/api/internal/paystack"
 )
 
 func setAccount(t *testing.T, e env, bank, number string) (int, map[string]any) {
@@ -309,5 +312,41 @@ func TestPaystackWebhook_BadSignatureRejected(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("%d events stored from forged requests", n)
+	}
+}
+
+type fakeCharger struct{}
+
+func (fakeCharger) InitializeTransaction(_ context.Context, ch paystack.Charge) (string, error) {
+	return "https://checkout.paystack.com/" + ch.Reference, nil
+}
+
+func (fakeCharger) VerifyTransaction(context.Context, string) (paystack.ChargeStatus, error) {
+	return paystack.ChargeStatus{}, paystack.ErrNotFound
+}
+
+func TestStartCheckout(t *testing.T) {
+	e := setup(t)
+	setAccount(t, e, "058", "0123456789")
+	_, naira := e.create(t, "n1", nairaBody)
+	_, hold := e.create(t, "h1", validBody)
+	post := func(code string) (int, map[string]any) {
+		req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/pay/"+code+"/checkout", nil)
+		return do(t, req)
+	}
+	if code, _ := post(naira["trackingCode"].(string)); code != http.StatusServiceUnavailable {
+		t.Fatalf("without Paystack: %d, want 503", code)
+	}
+	e.server.Checkout = &checkout.Service{Pool: e.pool, Charger: fakeCharger{}, Tokens: e.server.Tokens, WebURL: "http://web.test", Log: slog.New(slog.DiscardHandler)}
+	code, body := post(naira["trackingCode"].(string))
+	amt, _ := body["amount"].(map[string]any)
+	if code != http.StatusOK || !strings.HasPrefix(body["authorizationUrl"].(string), "https://checkout.paystack.com/chk_") || amt["minor"] != "19160712" || amt["asset"] != "NGN" {
+		t.Fatalf("naira link: %d %v", code, body)
+	}
+	if code, _ := post(hold["trackingCode"].(string)); code != http.StatusConflict {
+		t.Fatalf("stablecoin link: %d, want 409", code)
+	}
+	if code, _ := post("WB-0000-0000-0000-0000"); code != http.StatusNotFound {
+		t.Fatalf("unknown link: %d, want 404", code)
 	}
 }
