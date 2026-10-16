@@ -157,6 +157,9 @@ stateDiagram-v2
   underpaid --> confirmed: UnderpaymentAccepted
   confirmed --> settled: PaymentFinal
   overpaid --> settled: PaymentFinal
+  confirmed --> confirmed: PaymentDetected (paid again)
+  confirmed --> overpaid: ConfirmedOver
+  overpaid --> overpaid: PaymentDetected, ConfirmedOver
   expired --> received: PaymentDetected (late; rate re-quoted)
   received --> open: PaymentReorged
   underpaid --> open: PaymentReorged
@@ -276,8 +279,8 @@ Runs first in `api`, `worker` and `watcher`.
 | RPC down or erroring | Error result | Cursor does not advance. State is `unknown`, never "not paid". Failover to the next RPC *(stage 5)*. |
 | Stuck transaction (fee too low) | Not mined after N blocks | Replace at the same nonce with both fees bumped. Record the new hash and watch all hashes. |
 | Gas estimation fails | Estimation error | Do not broadcast. Mark the attempt and alert. A revert reason is recorded when available. |
-| Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. Overpayment is credited and shown on the receipt. |
-| Late payment | Payment after `expires_at` | Accepted into `expired → received`. The rate is re-quoted; it is never silently dropped. |
+| Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. The amount is classified only once no payment to the invoice is still unconfirmed, so a payment in parts is not mistaken for an underpayment. Overpayment, including paying twice, is credited in full and shown on the receipt. Money arriving after `settled` is recorded and credited; the invoice stays settled. |
+| Late payment | Payment after `expires_at` | Open invoices past `expires_at` are expired every 30 s (`invoice.RunExpiry`, in the watcher process until the outbox worker exists). A later payment is accepted into `expired → received` and never silently dropped; re-quoting comes with rates in stage 3. |
 | Duplicate payment sighting | Unique constraint | No-op. |
 | Provider timeout on payout | Timeout or 5xx | Payout → `unknown`. The reconciler queries by reference, and the payout is never resubmitted blind. |
 | Webhook replay or forgery | Signature and event-id uniqueness | Forged events are rejected. Replays are stored once and processed once. |

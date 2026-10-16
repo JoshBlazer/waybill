@@ -36,12 +36,16 @@ var wantInvoice = map[InvoiceState]map[InvoiceEvent]InvoiceState{
 		EvPaymentReorged:       InvoiceOpen,
 	},
 	InvoiceOverpaid: {
-		EvPaymentFinal:   InvoiceSettled,
-		EvPaymentReorged: InvoiceOpen,
+		EvPaymentDetected: InvoiceOverpaid,
+		EvConfirmedOver:   InvoiceOverpaid,
+		EvPaymentFinal:    InvoiceSettled,
+		EvPaymentReorged:  InvoiceOpen,
 	},
 	InvoiceConfirmed: {
-		EvPaymentFinal:   InvoiceSettled,
-		EvPaymentReorged: InvoiceOpen,
+		EvPaymentDetected: InvoiceConfirmed,
+		EvConfirmedOver:   InvoiceOverpaid,
+		EvPaymentFinal:    InvoiceSettled,
+		EvPaymentReorged:  InvoiceOpen,
 	},
 	InvoiceExpired: {
 		EvPaymentDetected: InvoiceReceived,

@@ -53,6 +53,8 @@ type Querier interface {
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
 	ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error)
+	// Open invoices past their expiry, oldest first.
+	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)

@@ -51,6 +51,10 @@ WHERE i.tracking_code = @tracking_code;
 -- name: GetInvoiceForUpdate :one
 SELECT * FROM invoices WHERE id = @id FOR UPDATE;
 
+-- name: ListDueInvoices :many
+-- Open invoices past their expiry, oldest first.
+SELECT id FROM invoices WHERE state = 'open' AND expires_at <= @now ORDER BY expires_at LIMIT @max;
+
 -- name: UpdateInvoiceState :exec
 UPDATE invoices SET state = @state, updated_at = now() WHERE id = @id;
 
