@@ -40,6 +40,7 @@ type Querier interface {
 	// Outbox. See docs/ARCHITECTURE.md §7.
 	// With a dedupe key already used, nothing is inserted and no row returns.
 	EnqueueOutbox(ctx context.Context, arg EnqueueOutboxParams) (int64, error)
+	FinishOutboundTx(ctx context.Context, arg FinishOutboundTxParams) (int64, error)
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
@@ -54,6 +55,8 @@ type Querier interface {
 	GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
+	// Outbound transactions --------------------------------------------------
+	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
 	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
 	GetWebhookEndpoint(ctx context.Context, id uuid.UUID) (WebhookEndpoint, error)
 	GetWebhookEvent(ctx context.Context, id string) (WebhookEvent, error)
@@ -63,10 +66,14 @@ type Querier interface {
 	// caller compares the returned row with what it asked for.
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
 	InsertDepositAddress(ctx context.Context, arg InsertDepositAddressParams) error
+	// A transaction that failed before a nonce was assigned. Nothing was sent.
+	InsertFailedOutboundTx(ctx context.Context, arg InsertFailedOutboundTxParams) (OutboundTx, error)
 	// Invoices ----------------------------------------------------------------
 	InsertInvoice(ctx context.Context, arg InsertInvoiceParams) (Invoice, error)
 	InsertInvoiceEvent(ctx context.Context, arg InsertInvoiceEventParams) (InsertInvoiceEventRow, error)
 	InsertJournalEntry(ctx context.Context, arg InsertJournalEntryParams) (InsertJournalEntryRow, error)
+	InsertOutboundAttempt(ctx context.Context, arg InsertOutboundAttemptParams) (OutboundTxAttempt, error)
+	InsertOutboundTx(ctx context.Context, arg InsertOutboundTxParams) (OutboundTx, error)
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
@@ -89,6 +96,8 @@ type Querier interface {
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
+	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
+	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
 	// Payments (watcher) --------------------------------------------------------

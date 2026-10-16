@@ -121,6 +121,34 @@ type LedgerBalance struct {
 	Balance     money.Amount
 }
 
+type OutboundTx struct {
+	ID         uuid.UUID
+	Signer     string
+	Network    string
+	Nonce      *int64
+	Purpose    string
+	RefID      string
+	ToAddress  string
+	Data       []byte
+	Value      money.Amount
+	GasLimit   *int64
+	State      string
+	Failure    *string
+	MinedHash  *string
+	MinedBlock *int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type OutboundTxAttempt struct {
+	ID           int64
+	OutboundTxID uuid.UUID
+	Hash         string
+	MaxFee       money.Amount
+	Tip          money.Amount
+	BroadcastAt  time.Time
+}
+
 type Outbox struct {
 	ID             int64
 	Topic          string

@@ -22,3 +22,37 @@ FOR UPDATE;
 
 -- name: SetSignerNextNonce :exec
 UPDATE signer_nonces SET next_nonce = @next_nonce WHERE signer = @signer AND network = @network;
+
+-- Outbound transactions --------------------------------------------------
+
+-- name: GetOutboundTxByRef :one
+SELECT * FROM outbound_txs WHERE purpose = @purpose AND ref_id = @ref_id;
+
+-- name: InsertOutboundTx :one
+INSERT INTO outbound_txs (signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state)
+VALUES (@signer, @network, @nonce, @purpose, @ref_id, @to_address, @data, @value, @gas_limit, 'pending')
+RETURNING *;
+
+-- name: InsertFailedOutboundTx :one
+-- A transaction that failed before a nonce was assigned. Nothing was sent.
+INSERT INTO outbound_txs (signer, network, nonce, purpose, ref_id, to_address, data, value, state, failure)
+VALUES (@signer, @network, NULL, @purpose, @ref_id, @to_address, @data, @value, 'failed', @failure)
+RETURNING *;
+
+-- name: ListPendingOutboundTxs :many
+SELECT * FROM outbound_txs
+WHERE signer = @signer AND network = @network AND state = 'pending'
+ORDER BY nonce;
+
+-- name: FinishOutboundTx :execrows
+UPDATE outbound_txs
+SET state = @state, mined_hash = @mined_hash, mined_block = @mined_block, updated_at = now()
+WHERE id = @id AND state = 'pending';
+
+-- name: InsertOutboundAttempt :one
+INSERT INTO outbound_tx_attempts (outbound_tx_id, hash, max_fee, tip)
+VALUES (@outbound_tx_id, @hash, @max_fee, @tip)
+RETURNING *;
+
+-- name: ListOutboundAttempts :many
+SELECT * FROM outbound_tx_attempts WHERE outbound_tx_id = @outbound_tx_id ORDER BY id;

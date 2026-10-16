@@ -1,7 +1,7 @@
 # Design note: transaction manager nonces and fees
 
-**Status:** implemented.
-**Code:** `api/db/migrations/00007_signer_nonces.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (`txmgr.go`, `lease.go`, `nonce.go`, `fees.go`).
+**Status:** implemented, including the plumbing (§7).
+**Code:** `api/db/migrations/00007_signer_nonces.sql`, `00008_outbound_txs.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (`txmgr.go`, `lease.go`, `nonce.go`, `fees.go`, `manager.go`, `signer.go`, `revert.go`).
 **Done means:** `go test ./internal/txmgr/` passes: 6 nonce tests (including the I10 concurrency test), 2 lease and schema tests, and 5 fee tests (3 of them `rapid` properties, including I11).
 
 ## 1. What the transaction manager is for
@@ -21,7 +21,7 @@ Stage 1 met both problems by hand on Base Sepolia. A public node reported a stal
 | `AcquireLease`: single-writer lease per key | `lease.go` |
 | `NextNonce` | `nonce.go` |
 | `InitialFees`, `Replacement` | `fees.go` |
-| Outbound transaction and attempt tables, broadcast, receipt watching, deciding when a transaction is stuck | next roadmap item |
+| Outbound transaction and attempt tables, broadcast, receipt watching, deciding when a transaction is stuck | `manager.go` (§7) |
 
 The nonce and fee logic is pure decision logic plus one locked read-modify-write. Everything that talks to a node is plumbing and stays out of it, so the decisions can be tested without a chain.
 
@@ -97,10 +97,40 @@ The result is the *smallest* acceptable fee, not merely an acceptable one. Overp
 | `TestNextNonce_RolledBackTransactionDoesNotConsume` | a rollback leaves no gap |
 | `TestNextNonce_RequiresCurrentLease` | `ErrNoLease`, `ErrNotLeaseHolder`, `ErrLeaseExpired`; failed calls hand nothing out |
 | `TestTxMgr_ConcurrentSendersNeverShareNonce` (**I10**) | 16 goroutines × 10 nonces get 0–159 exactly once; 16 more without the lease get none |
-| `TestAcquireLease_OneHolderAtATime`, `TestSignerNonces_NextNonceNeverDecreases` | the provided lease and trigger (pass already) |
+| `TestAcquireLease_OneHolderAtATime`, `TestSignerNonces_NextNonceNeverDecreases` | the lease and the never-decreases trigger |
 | `TestInitialFees`, `TestReplacement` | exact values, rounding, zero tip, market wins, cap, every invalid input |
 | `TestTxMgr_ReplacementBumpsBothFees` (**I11**, `rapid`) | always accepted by the node rule, at or above market, max ≥ tip, minimal, inputs untouched, no aliasing |
 | `TestReplacement_RepeatedBumpsKeepRising` (`rapid`) | 20 replacements in a row are each accepted, even from zero |
 | `TestReplacement_CapIsAHardCeiling` (`rapid`) | never above the cap; `ErrFeeCapExceeded` only when the uncapped result is above it |
 
-`TestTxMgr_AllAttemptHashesRecorded` (also I11) belongs to the plumbing and comes with it.
+The plumbing's tests are in §7.
+
+## 7. Plumbing: sending, watching, replacing
+
+`Manager` sends transactions for one signer on one network (`manager.go`). Tables: `outbound_txs` (one row per logical transaction, unique on `(signer, network, nonce)` and on `(purpose, ref_id)`) and `outbound_tx_attempts` (every hash, append-only by trigger), migration 00008.
+
+**`Submit(req)`**
+1. If `(purpose, ref_id)` already exists, return it. Nothing is sent twice.
+2. Estimate gas. If the node says the call **reverts**, record a `failed` row with the reason, use no nonce, broadcast nothing, and return `ErrEstimateFailed`. Callers treat that as permanent and alert. Any **other** estimation error (timeout, connection refused) records nothing and is returned for a retry: "could not find out" is not "would revert" (I12). `RevertReason` decodes `Error(string)` reasons and tells the two apart.
+3. Take the lease, read the node's pending nonce, then in one transaction run `NextNonce` and insert the `pending` row with the gas limit (estimate + 20 %).
+4. Broadcast with `InitialFees` from the latest base fee and the suggested tip. If that is above `MaxFeeCap`, nothing is sent yet; `Tick` tries again.
+
+**Broadcast:** sign, **record the attempt's hash**, then send. A crash after sending still leaves the hash on record and watched.
+
+**`Tick()`**, run every few seconds by the lease holder only:
+- A pending row with no attempts (crash before the first broadcast, or fees above the cap) is broadcast.
+- Each attempt's receipt is checked. They share a nonce, so at most one can be mined. Once it is `Confirmations` deep, the row becomes `mined` or `reverted` with that hash. The purpose's `Hook` (for example the sweep's ledger entry) runs in the same database transaction.
+- If the newest attempt has waited `StuckAfter`, it is replaced with `Replacement(last, market)`. Fees above the cap stop and log an alert for a person; nothing is overpaid.
+- An RPC error ends the tick with nothing recorded.
+
+| Test | What it proves |
+|---|---|
+| `TestTxMgr_SubmitSendsAndHookRunsOnceWhenMined` | sent, finished only after the confirmations, hook runs once |
+| `TestTxMgr_SubmitIsIdempotentPerRef` | the same request twice sends once |
+| `TestTxMgr_StuckTransactionIsReplaced` (**I11**) | on Anvil with mining paused, a base-fee spike strands the first attempt; the replacement has both fees higher, is mined at the same nonce, the first never is, and both hashes stay recorded (`DELETE` on attempts is refused) |
+| `TestTxMgr_RevertingCallIsRecordedNotSent` | gas estimation failure: reason recorded, no nonce used, nothing broadcast, next transaction gets nonce 0 |
+| `TestTxMgr_UnreachableNodeIsNotAFailure` | an RPC error during estimation records nothing (I12) |
+| `TestTxMgr_FeeCapHoldsBroadcastUntilFeesFit` | above the cap nothing is sent; when fees fit, `Tick` sends |
+| `TestTxMgr_OnlyLeaseHolderTicks` | another process holding the key does nothing |
+| `TestSecret_NeverAppearsInLogs` (**I15**) | `LocalSigner` never prints its key, in `%v`, `%#v` or `slog` |
+
