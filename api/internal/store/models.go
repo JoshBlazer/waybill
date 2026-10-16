@@ -119,6 +119,21 @@ type LedgerBalance struct {
 	Balance     money.Amount
 }
 
+type Outbox struct {
+	ID             int64
+	Topic          string
+	Payload        []byte
+	DedupeKey      *string
+	AvailableAt    time.Time
+	Attempts       int32
+	LeaseOwner     *string
+	LeaseExpiresAt *time.Time
+	DoneAt         *time.Time
+	DeadAt         *time.Time
+	LastError      *string
+	CreatedAt      time.Time
+}
+
 type Payment struct {
 	ID           uuid.UUID
 	Network      string

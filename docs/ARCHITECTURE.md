@@ -7,7 +7,7 @@ This document describes the system as designed. Sections marked *(planned, stage
 | Component | Where | Responsibility |
 |---|---|---|
 | **API** (`waybill api`) | `api/cmd/waybill`, `api/internal/httpapi` | REST under `/v1`, defined in `openapi/waybill.yaml`. Idempotent creation endpoints. Server-Sent Events for tracking. Writes state changes and outbox rows in one transaction. |
-| **Worker** (`waybill worker`) | `api/internal/outbox` *(planned, stage 2)* | Leases outbox rows with `FOR UPDATE SKIP LOCKED` and runs handlers: sweeps, payouts, webhooks, conversions. At-least-once execution with idempotent handlers. |
+| **Worker** (`waybill worker`) | `api/internal/outbox`, `api/cmd/waybill/worker.go` | Leases outbox rows with `FOR UPDATE SKIP LOCKED` and runs handlers: sweeps, payouts, webhooks, conversions (registered as each arrives). At-least-once execution with idempotent handlers. Also expires due invoices. |
 | **Chain watcher** (`waybill watcher`) | `api/internal/watcher` | Follows each configured chain block by block. Detects deposits, tracks detected, confirmed and final, and detects reorgs by block hash. |
 | **Transaction manager** | `api/internal/txmgr` *(planned, stage 2)* | The only writer for each signing key. Assigns nonces, estimates and bumps EIP-1559 fees, and records every hash a payment has had. Runs inside the worker. |
 | **Ledger** | `api/internal/ledger` | Double-entry, append-only, multi-asset. Balance is enforced by PostgreSQL. |
@@ -237,6 +237,8 @@ Each invariant names the test that proves it. A test that does not exist yet car
 - A state change and the work it causes are written in **one transaction**: the domain rows, the ledger entry and an `outbox` row.
 - Workers lease rows with `SELECT … FOR UPDATE SKIP LOCKED LIMIT n`, set `lease_owner` and `lease_expires_at`, and commit. A crashed worker's lease expires and another worker picks the row up.
 - Handlers are idempotent. Each one checks the target's current state before acting, and external calls carry our id as the provider reference.
+- A job has an optional dedupe key, so enqueueing the same logical job twice is a no-op. A failed job is retried with exponential backoff (2 s doubling to 10 min) and goes `dead` after its last attempt, or at once on a permanent error or a topic nothing handles. Dead jobs keep their last error and wait for a person.
+- A handler gets 90 % of the lease, so it finishes before another worker can take the job. Only the current lease holder can record an outcome; a worker that lost its lease records nothing.
 - Live updates use `NOTIFY` in the same transaction. The API `LISTEN`s and fans out to SSE clients. A reconnecting client sends `Last-Event-ID` and gets the missed rows from `invoice_events`. No broker is involved.
 
 ## 8. Chain watching
@@ -280,7 +282,7 @@ Runs first in `api`, `worker` and `watcher`.
 | Stuck transaction (fee too low) | Not mined after N blocks | Replace at the same nonce with both fees bumped. Record the new hash and watch all hashes. |
 | Gas estimation fails | Estimation error | Do not broadcast. Mark the attempt and alert. A revert reason is recorded when available. |
 | Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. The amount is classified only once no payment to the invoice is still unconfirmed, so a payment in parts is not mistaken for an underpayment. Overpayment, including paying twice, is credited in full and shown on the receipt. Money arriving after `settled` is recorded and credited; the invoice stays settled. |
-| Late payment | Payment after `expires_at` | Open invoices past `expires_at` are expired every 30 s (`invoice.RunExpiry`, in the watcher process until the outbox worker exists). A later payment is accepted into `expired → received` and never silently dropped; re-quoting comes with rates in stage 3. |
+| Late payment | Payment after `expires_at` | Open invoices past `expires_at` are expired every 30 s (`invoice.RunExpiry`, in the worker). A later payment is accepted into `expired → received` and never silently dropped; re-quoting comes with rates in stage 3. |
 | Duplicate payment sighting | Unique constraint | No-op. |
 | Provider timeout on payout | Timeout or 5xx | Payout → `unknown`. The reconciler queries by reference, and the payout is never resubmitted blind. |
 | Webhook replay or forgery | Signature and event-id uniqueness | Forged events are rejected. Replays are stored once and processed once. |
