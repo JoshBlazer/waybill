@@ -28,7 +28,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
 | Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Done (stage 1); budgets set from CI measurement (ADR-036) | `make lighthouse` |
 | Base Sepolia: contracts deployed, one invoice paid and settled | Done (stage 1) | [Testnet deployments](#testnet-deployments) |
-| **Stage 2 — Hardening** | In progress | [roadmap](docs/ROADMAP.md#stage-2--hardening) |
+| **Stage 2 — Hardening** (exit check passed 2026-10-16) | Done | [walkthrough](docs/walkthroughs/stage-2.md) |
 | Reorg handling: detect by block hash, walk back to the common ancestor, reverse confirmed payments, rescan | Done (stage 2) | `go test ./internal/watcher` (fake-chain reorg tests; `TestWatcher_ReorgReversesConfirmedPayment` forces a reorg on Anvil with `evm_snapshot`/`evm_revert`) |
 | Payment edge cases: payments in parts, top-ups, overpayment, paying twice, payment after settlement, invoice expiry and late payment | Done (stage 2) | `go test ./internal/watcher` (`edge_test.go`) |
 | Transaction manager nonce and fee logic: single-writer lease per key, gap-free nonces under concurrency, EIP-1559 initial and replacement fees | Done (stage 2) | `go test ./internal/txmgr` (13 tests incl. `rapid` properties and a concurrency test; [design](docs/design/txmgr.md)) |
