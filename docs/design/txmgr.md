@@ -1,7 +1,7 @@
 # Design note: transaction manager nonces and fees
 
-**Status:** designed. Signatures and failing tests are in place; the owner implements `nonce.go` and `fees.go` (hand-written module, see CLAUDE.md).
-**Code:** `api/db/migrations/00007_signer_nonces.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (provided: `txmgr.go`, `lease.go`; hand-written: `nonce.go`, `fees.go`).
+**Status:** implemented.
+**Code:** `api/db/migrations/00007_signer_nonces.sql`, `api/db/queries/txmgr.sql`, `api/internal/txmgr/` (`txmgr.go`, `lease.go`, `nonce.go`, `fees.go`).
 **Done means:** `go test ./internal/txmgr/` passes: 6 nonce tests (including the I10 concurrency test), 2 lease and schema tests, and 5 fee tests (3 of them `rapid` properties, including I11).
 
 ## 1. What the transaction manager is for
@@ -13,19 +13,19 @@ Waybill sends transactions from its own keys: sweeping deposit forwarders into t
 
 Stage 1 met both problems by hand on Base Sepolia. A public node reported a stale pending nonce, so one send failed with "nonce too low" and was resent with an explicit `--nonce`. The transaction manager exists so that never needs a person.
 
-## 2. Who writes what
+## 2. The pieces
 
-| Piece | Written by | File |
-|---|---|---|
-| `signer_nonces` table and its never-decreases trigger | assistant | `00007_signer_nonces.sql` |
-| `AcquireLease`: single-writer lease per key | assistant | `lease.go` |
-| `NextNonce` | **owner** | `nonce.go` |
-| `InitialFees`, `Replacement` | **owner** | `fees.go` |
-| Outbound transaction and attempt tables, broadcast, receipt watching, deciding when a transaction is stuck | assistant, next roadmap item | — |
+| Piece | File |
+|---|---|
+| `signer_nonces` table and its never-decreases trigger | `00007_signer_nonces.sql` |
+| `AcquireLease`: single-writer lease per key | `lease.go` |
+| `NextNonce` | `nonce.go` |
+| `InitialFees`, `Replacement` | `fees.go` |
+| Outbound transaction and attempt tables, broadcast, receipt watching, deciding when a transaction is stuck | next roadmap item |
 
-The hand-written part is pure decision logic plus one locked read-modify-write. Everything that talks to a node is plumbing and stays out of it, so the decisions can be tested without a chain.
+The nonce and fee logic is pure decision logic plus one locked read-modify-write. Everything that talks to a node is plumbing and stays out of it, so the decisions can be tested without a chain.
 
-## 3. The lease (provided)
+## 3. The lease
 
 One row per `(signer, network)` in `signer_nonces`. `AcquireLease(ctx, db, signer, network, owner, ttl)` takes the lease if nobody holds it, renews it if `owner` already does, and takes it over once it has expired; otherwise it returns `ErrLeaseHeld`. Times come from the database clock (`statement_timestamp()`), so two workers with skewed clocks still agree.
 

@@ -31,7 +31,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | **Stage 2 — Hardening** | In progress | [roadmap](docs/ROADMAP.md#stage-2--hardening) |
 | Reorg handling: detect by block hash, walk back to the common ancestor, reverse confirmed payments, rescan | Done (stage 2) | `go test ./internal/watcher` (fake-chain reorg tests; `TestWatcher_ReorgReversesConfirmedPayment` forces a reorg on Anvil with `evm_snapshot`/`evm_revert`) |
 | Payment edge cases: payments in parts, top-ups, overpayment, paying twice, payment after settlement, invoice expiry and late payment | Done (stage 2) | `go test ./internal/watcher` (`edge_test.go`) |
-| Transaction manager nonce and fee logic (hand-written) | Design note, signatures and failing tests ready; awaiting implementation | [PR #7](../../pull/7) |
+| Transaction manager nonce and fee logic: single-writer lease per key, gap-free nonces under concurrency, EIP-1559 initial and replacement fees | Done (stage 2) | `go test ./internal/txmgr` (13 tests incl. `rapid` properties and a concurrency test; [design](docs/design/txmgr.md)) |
 | `BatchPayout` contract: all-or-nothing batches through the vault's payout-id guard and limits | Done (stage 2); deployed with the payout plumbing | `make test-contracts` (10 unit tests, 4 invariants) |
 | Outbox and worker: jobs enqueued in the same transaction as the change, leased with `SKIP LOCKED`, retried with backoff, dead after the last attempt; invoice expiry runs in the worker | Done (stage 2) | `go test ./internal/outbox` (12 tests incl. 8 concurrent workers) |
 | API key management (create, list, revoke) and signed outgoing webhooks: invoice events delivered by the worker, retried for about a day, every attempt logged, SSRF guard on endpoint URLs | Done (stage 2) | `go test ./internal/webhook ./internal/httpapi` |
@@ -94,11 +94,10 @@ Read in this order: [PRODUCT](docs/PRODUCT.md) → [ARCHITECTURE](docs/ARCHITECT
 
 ## Built with AI assistance
 
-This project is built with an AI coding assistant (Claude Code). Two modules are written by hand by the author, Joshua; the assistant supplies only their design notes, signatures and failing tests, and reviews the author's implementation:
+This project is built with an AI coding assistant (Claude Code). One module is written by hand by the author, Joshua; the assistant supplies only its design note, signatures and failing tests, and reviews the author's implementation:
 
 | Module | Status |
 |---|---|
 | Payout state machine | Not yet written (stage 3) |
-| Transaction manager nonce and fee logic | Design note, signatures and failing tests ready ([docs/design/txmgr.md](docs/design/txmgr.md)); implementation not yet written (stage 2) |
 
-To check that its failing tests are correct and satisfiable, the assistant may run them against a throwaway implementation. That code is deleted, never committed and never shown; the committed implementation is the author's. Everything else, including the stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.
+To check that the failing tests are correct and satisfiable, the assistant may run them against a throwaway implementation. That code is deleted, never committed and never shown; the committed implementation is the author's. Everything else, including the stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.
