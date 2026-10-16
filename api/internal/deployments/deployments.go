@@ -36,6 +36,9 @@ type Deployment struct {
 	// StartBlock is at or before the block that created the contracts. The
 	// watcher begins there on its first run instead of at genesis.
 	StartBlock uint64 `json:"startBlock"`
+	// BatchPayout is optional: networks deployed before it existed gain it
+	// through script/AddBatchPayout.s.sol.
+	BatchPayout common.Address `json:"batchPayout,omitempty"`
 }
 
 // PredictDepositAddress returns the deposit address for salt on this network.
@@ -106,6 +109,17 @@ func Verify(ctx context.Context, c Caller, d Deployment) error {
 	if got, want := common.BytesToAddress(predicted), d.PredictDepositAddress(probe); got != want {
 		return fmt.Errorf("%w: %s factory predicts %s, Waybill computes %s",
 			errMismatch, d.Network, got.Hex(), want.Hex())
+	}
+
+	if d.BatchPayout != (common.Address{}) {
+		v, err := call(ctx, c, d.BatchPayout, "vault()", nil)
+		if err != nil {
+			return fmt.Errorf("deployments: %s batchPayout.vault(): %w", d.Network, err)
+		}
+		if common.BytesToAddress(v) != d.Vault {
+			return fmt.Errorf("%w: %s BatchPayout pays from %s, configured vault %s",
+				errMismatch, d.Network, common.BytesToAddress(v).Hex(), d.Vault.Hex())
+		}
 	}
 
 	dec, err := call(ctx, c, d.Token, "decimals()", nil)

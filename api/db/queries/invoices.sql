@@ -151,3 +151,14 @@ SELECT * FROM idempotency_keys WHERE principal = @principal AND key = @key;
 UPDATE idempotency_keys
 SET status_code = @status_code, response_body = @response_body, completed_at = now()
 WHERE principal = @principal AND key = @key;
+
+-- Sweeping --------------------------------------------------------------
+
+-- name: ListUnsweptFinalPayments :many
+-- Final payments on a network with no sweep job yet (the job dedupe key is
+-- sweep:<payment id>).
+SELECT p.id, p.invoice_id FROM payments p
+WHERE p.network = @network AND p.state = 'final'
+  AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.dedupe_key = 'sweep:' || p.id::text)
+ORDER BY p.final_at, p.id
+LIMIT 100;

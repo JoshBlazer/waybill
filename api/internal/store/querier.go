@@ -100,6 +100,10 @@ type Querier interface {
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
+	// Sweeping --------------------------------------------------------------
+	// Final payments on a network with no sweep job yet (the job dedupe key is
+	// sweep:<payment id>).
+	ListUnsweptFinalPayments(ctx context.Context, network string) ([]ListUnsweptFinalPaymentsRow, error)
 	// Payments (watcher) --------------------------------------------------------
 	// Every deposit address on a network, including expired invoices: late
 	// payments are still recorded (docs/RISKS.md §7).

@@ -50,7 +50,7 @@ Build the whole path end to end before deepening any part of it.
 - [x] Transaction manager plumbing: single-writer lease, broadcast, attempt recording, receipt watching.
 - [x] Gas estimation failure handling.
 - [x] Underpaid, overpaid, late and duplicate payments.
-- [ ] Sweeping to the vault; vault limits and pause.
+- [x] Sweeping to the vault; vault limits and pause.
 - [x] `BatchPayout` contract with the payout-id guard; Foundry invariant tests.
 - [x] Public API keys, and outgoing webhooks with signature, retries and delivery log.
 

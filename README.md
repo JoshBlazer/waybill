@@ -36,7 +36,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Outbox and worker: jobs enqueued in the same transaction as the change, leased with `SKIP LOCKED`, retried with backoff, dead after the last attempt; invoice expiry runs in the worker | Done (stage 2) | `go test ./internal/outbox` (12 tests incl. 8 concurrent workers) |
 | API key management (create, list, revoke) and signed outgoing webhooks: invoice events delivered by the worker, retried for about a day, every attempt logged, SSRF guard on endpoint URLs | Done (stage 2) | `go test ./internal/webhook ./internal/httpapi` |
 | Transaction manager plumbing: submit, broadcast (hash recorded first), receipts, replacing stuck transactions with both fees bumped, gas-estimation failures recorded and never broadcast | Done (stage 2) | `go test ./internal/txmgr` (Anvil in testcontainers) |
-| Sweeping deposits into the vault | Not started (stage 2) | — |
+| Sweeping final deposits into the vault through the transaction manager, recorded in the ledger from the on-chain `Swept` event; `BatchPayout` in the deploy script | Done (stage 2) | `go test ./internal/sweep` (real contracts on Anvil) |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
 | Ethereum Sepolia, Bitcoin, RPC failover, observability | Not started (stage 5) | — |
@@ -52,10 +52,13 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Vault | [`0x94cB9FBcba05DA1991c512Df8c9DB256D164F788`](https://sepolia.basescan.org/address/0x94cB9FBcba05DA1991c512Df8c9DB256D164F788) |
 | ForwarderFactory | [`0xe3764E8c167133deFcb9cc1c400D87d01C92aaa4`](https://sepolia.basescan.org/address/0xe3764E8c167133deFcb9cc1c400D87d01C92aaa4) |
 | DepositForwarder (implementation) | [`0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C`](https://sepolia.basescan.org/address/0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C) |
+| BatchPayout (added 2026-10-16 with `script/AddBatchPayout.s.sol`) | [`0x062fc972FEa4b72e4b9516b06465f61cE7Eb3c62`](https://sepolia.basescan.org/address/0x062fc972FEa4b72e4b9516b06465f61cE7Eb3c62) |
 
 MockStablecoin deployment transaction: [`0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70`](https://sepolia.basescan.org/tx/0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70) (block 48167483). All seven deployment transactions succeeded.
 
 **One invoice paid on Base Sepolia**, 2026-10-16: a 25.00 USDC invoice, paid with 25 mUSDC to its deposit address in transaction [`0x42925b1a794017d171ea879f287c292db277bc3c7bc13381614eab86af38af69`](https://sepolia.basescan.org/tx/0x42925b1a794017d171ea879f287c292db277bc3c7bc13381614eab86af38af69) (block 48176412). The watcher, pointed at `https://sepolia.base.org`, detected it 36 seconds after the invoice was created, confirmed it four seconds later, and made it final about 15 minutes later, once Base Sepolia's `finalized` block passed it. It posted `deposit.confirmed` and `deposit.final`, and the invoice ended `settled`.
+
+**One deposit swept on Base Sepolia**, 2026-10-16 (stage 2): a 30.00 USDC invoice was paid in [`0x04d12a49e63595f8e1df09141a3d285beb524094db0333fb6e2009f5ede420ef`](https://sepolia.basescan.org/tx/0x04d12a49e63595f8e1df09141a3d285beb524094db0333fb6e2009f5ede420ef) (block 48189929). About 20 minutes later, once Base Sepolia's `finalized` block passed it, the payment became final and the invoice `settled`. The worker added a sweep job, and the transaction manager sent `deployAndSweep` in [`0x6f698e90cc12e3fd621c732fd9fa282f0463bc59700102a1ee08fef3ace3b196`](https://sepolia.basescan.org/tx/0x6f698e90cc12e3fd621c732fd9fa282f0463bc59700102a1ee08fef3ace3b196) (block 48190509, nonce 14: the key had been used outside Waybill up to 13, and `NextNonce` started from the node's count). The forwarder was deployed and emptied into the vault in that one transaction, and the ledger moved 30.00 USDC from `custody:deposit` to `custody:vault`. The BatchPayout transactions are in [`contracts/broadcast/AddBatchPayout.s.sol/84532/run-latest.json`](contracts/broadcast/AddBatchPayout.s.sol/84532/run-latest.json).
 
 The deployer key is a throwaway test key kept outside the repository. It was funded from the Sepolia proof-of-work faucet and bridged to Base Sepolia through Base's L1StandardBridge.
 

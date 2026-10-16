@@ -660,6 +660,43 @@ func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payme
 	return items, nil
 }
 
+const listUnsweptFinalPayments = `-- name: ListUnsweptFinalPayments :many
+
+SELECT p.id, p.invoice_id FROM payments p
+WHERE p.network = $1 AND p.state = 'final'
+  AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.dedupe_key = 'sweep:' || p.id::text)
+ORDER BY p.final_at, p.id
+LIMIT 100
+`
+
+type ListUnsweptFinalPaymentsRow struct {
+	ID        uuid.UUID
+	InvoiceID uuid.UUID
+}
+
+// Sweeping --------------------------------------------------------------
+// Final payments on a network with no sweep job yet (the job dedupe key is
+// sweep:<payment id>).
+func (q *Queries) ListUnsweptFinalPayments(ctx context.Context, network string) ([]ListUnsweptFinalPaymentsRow, error) {
+	rows, err := q.db.Query(ctx, listUnsweptFinalPayments, network)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUnsweptFinalPaymentsRow
+	for rows.Next() {
+		var i ListUnsweptFinalPaymentsRow
+		if err := rows.Scan(&i.ID, &i.InvoiceID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWatchedAddresses = `-- name: ListWatchedAddresses :many
 
 SELECT address, invoice_id FROM deposit_addresses WHERE network = $1

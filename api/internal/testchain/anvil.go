@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/testcontainers/testcontainers-go"
@@ -84,17 +86,39 @@ func (a *Anvil) Mine(n int) {
 	a.Call(nil, "anvil_mine", hexutil.EncodeUint64(uint64(n))) //nolint:gosec // small counts
 }
 
-// Send sends a transaction from an unlocked dev account and returns its
-// hash. With automine on (the default), it is mined at once.
+// Send sends a transaction from an unlocked dev account, waits for it to
+// be mined (automine, the default) and returns its hash.
 func (a *Anvil) Send(from, to common.Address, data []byte) common.Hash {
 	a.t.Helper()
 	var h common.Hash
 	a.Call(&h, "eth_sendTransaction", map[string]any{"from": from, "to": to, "data": hexutil.Bytes(data), "gas": "0x1000000"})
+	a.Receipt(h)
 	return h
+}
+
+// Receipt waits up to five seconds for a transaction's receipt: Anvil can
+// answer eth_sendTransaction before the block is sealed.
+func (a *Anvil) Receipt(h common.Hash) *types.Receipt {
+	a.t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		r, err := a.Client.TransactionReceipt(context.Background(), h)
+		if err == nil {
+			return r
+		}
+		if time.Now().After(deadline) {
+			a.t.Fatalf("no receipt for %s: %v", h.Hex(), err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // Fund sets an account's ETH balance.
 func (a *Anvil) Fund(addr common.Address, wei string) {
 	a.t.Helper()
 	a.Call(nil, "anvil_setBalance", addr, wei)
+}
+
+func callMsg(to common.Address, data []byte) ethereum.CallMsg {
+	return ethereum.CallMsg{To: &to, Data: data}
 }
