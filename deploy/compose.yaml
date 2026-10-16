@@ -53,6 +53,8 @@ services:
               "--sender", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"]
     environment:
       FOUNDRY_BROADCAST: /tmp/broadcast
+      # Only its address is used: it gets the sweeper and batcher roles.
+      WAYBILL_SIGNER_KEY: ${WAYBILL_SIGNER_KEY:?run make up, which adds it to deploy/.env}
     volumes:
       - deployments:/contracts/deployments
     depends_on:
@@ -127,7 +129,10 @@ services:
     image: waybill-api:local
     pull_policy: never
     command: ["worker"]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      # The service signing key. Only the worker signs.
+      WAYBILL_SIGNER_KEY: ${WAYBILL_SIGNER_KEY:?run make up, which adds it to deploy/.env}
     volumes: [deployments:/deployments:ro]
     depends_on:
       seed: { condition: service_completed_successfully }

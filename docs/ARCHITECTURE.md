@@ -266,9 +266,16 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | `DepositForwarder` | Implementation behind every deposit address. `vault` and `factory` are immutables in its code, so EIP-1167 clones need no initialiser and nothing in a clone's storage can redirect funds. `sweep(token)` moves the full balance to the vault, factory only. | Built |
 | `ForwarderFactory` | `predict(salt)` gives the CREATE2 address before deployment, with `salt = keccak256(invoiceId)`. `deployAndSweep(salt, token)` (`SWEEPER_ROLE` only) deploys the clone if needed and sweeps it. Events are emitted before any state-changing external call, and the sweep must move exactly the announced amount (`SweepMismatch`). | Built |
 | `Vault` | `AccessControl` roles (`PAYOUT`, `PAUSER`, admin), per-token per-transaction and per-UTC-day limits, `Pausable`. Limits fail closed: a token with no limits cannot be paid out. Only the admin can unpause. `payout(token, to, amount, payoutId)` rejects a reused payout id, so a payout id moves money at most once regardless of the caller (I16). | Built (stage 2 adds invariant tests) |
-| `BatchPayout` | Pays up to 200 recipients from the vault in one transaction. Every item goes through `Vault.payout`, so the payout-id guard, limits and pause apply to each; any failing item reverts the whole batch, and a batch id is used once. Needs the vault's `PAYOUT_ROLE`; callers need `BATCHER_ROLE`. | Built (stage 2); not yet in `Deploy.s.sol`, which gains it with the payout plumbing |
+| `BatchPayout` | Pays up to 200 recipients from the vault in one transaction. Every item goes through `Vault.payout`, so the payout-id guard, limits and pause apply to each; any failing item reverts the whole batch, and a batch id is used once. Needs the vault's `PAYOUT_ROLE`; callers need `BATCHER_ROLE`. | Built (stage 2); deployed by `Deploy.s.sol` |
 
-Deployment: `contracts/script/Deploy.s.sol` deploys the token, vault and factory and grants the broadcaster every operational role. That is acceptable on test networks only.
+Deployment: `contracts/script/Deploy.s.sol` deploys the token, vault, factory and `BatchPayout` and grants the broadcaster every operational role. That is acceptable on test networks only. With `WAYBILL_SIGNER_KEY` set (the Compose stack generates one per machine in `deploy/.env`), that key's address also gets the sweeper and batcher roles and test ETH, so the worker signs with its own key. `script/AddBatchPayout.s.sol` adds `BatchPayout` to a network deployed before it existed.
+
+### Sweeping
+
+- Every 15 s the worker adds one `sweep.deposit` outbox job per final payment that has none (dedupe key `sweep:<payment id>`).
+- The job waits (retries with backoff) while any payment to the invoice is still detected or confirmed, so it never moves money the ledger has not counted. Then it submits `ForwarderFactory.deployAndSweep(keccak256(invoice id), token)` through the transaction manager, purpose `sweep`.
+- When the sweep is mined and confirmed, a hook in the same database transaction reads the factory's `Swept` event and posts `sweep.confirmed`: `custody:vault` up, `custody:deposit` down, by the amount that actually moved. A second sweep of an already-empty forwarder moves 0 and posts nothing. What the contractor is owed does not change.
+- A sweep that would revert (for example, the signer lacks `SWEEPER_ROLE`) fails gas estimation: recorded, nothing sent, the job goes dead for a person.
 
 ## 10. Test-money guard
 

@@ -12,7 +12,8 @@ GITLEAKS_IMAGE := ghcr.io/gitleaks/gitleaks:v8.30.1
 GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/schema.d.ts
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
-        lint-contracts lint-web check-gen e2e setup secrets budget lighthouse
+        lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
+        env fixtures check-fixtures
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -42,14 +43,22 @@ deploy/.env:
 		"$$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 52)" > $@
 	@echo "Generated $@ with a local demo API key."
 
-up: deploy/.env contracts/lib/forge-std/src ## Build and start the local stack; waits until every service is healthy
+# Adds settings that later stages need to an existing deploy/.env. The
+# signing key is random per machine: the deploy script gives its address the
+# sweeper and batcher roles and test ETH on the local Anvil.
+env: deploy/.env
+	@grep -q '^WAYBILL_SIGNER_KEY=' deploy/.env || { \
+		umask 077; printf 'WAYBILL_SIGNER_KEY=0x%s\n' "$$(LC_ALL=C tr -dc '0-9a-f' </dev/urandom | head -c 64)" >> deploy/.env; \
+		echo "Added a local service signing key to deploy/.env."; }
+
+up: env contracts/lib/forge-std/src ## Build and start the local stack; waits until every service is healthy
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
 
-down: deploy/.env ## Stop the local stack and delete its volumes
+down: env ## Stop the local stack and delete its volumes
 	$(COMPOSE) down --volumes --remove-orphans
 
-logs: deploy/.env ## Follow logs from the local stack
+logs: env ## Follow logs from the local stack
 	$(COMPOSE) logs --follow
 
 # --- Code generation -----------------------------------------------------------
@@ -58,6 +67,16 @@ gen: web/node_modules ## Regenerate Go server types, sqlc queries and TS types
 	cd api && go generate ./internal/httpapi/
 	cd api && go tool sqlc generate
 	cd web && npm run --silent gen:api
+
+FIXTURE := api/internal/testchain/contracts.json
+
+fixtures: ## Regenerate contract bytecode for Go integration tests
+	cd contracts && forge build
+	python3 api/internal/testchain/gen_fixture.py contracts/out $(FIXTURE)
+
+check-fixtures: fixtures ## Fail if the contract bytecode fixture is out of date
+	@git diff --quiet -- $(FIXTURE) || { echo "$(FIXTURE) is out of date. Run 'make fixtures' and commit it."; exit 1; }
+	@echo "Contract fixture is up to date."
 
 check-gen: gen ## Fail if generated code is out of date
 	@if ! git diff --quiet -- $(GENERATED) || [ -n "$$(git ls-files --others --exclude-standard -- $(GENERATED))" ]; then \

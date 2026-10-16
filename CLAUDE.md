@@ -30,7 +30,9 @@ api/                 Go module, one binary: cmd/waybill (api | worker | watcher 
   internal/statemachine  pure invoice (and later payout) state machines
   internal/invoice   create invoices, load views, apply state transitions
   internal/watcher   EVM payment detection, confirmation, finality, reorgs
-  internal/txmgr     signing-key lease, nonces, EIP-1559 fees (transaction plumbing next)
+  internal/txmgr     signing-key lease, nonces, EIP-1559 fees, sending and replacing transactions
+  internal/sweep     final deposits swept into the vault; ledger entry from the Swept event
+  internal/testchain Anvil in testcontainers plus contract bytecode (contracts.json, `make fixtures`)
   internal/outbox    transactional outbox: enqueue in the caller's tx; worker leases with SKIP LOCKED
   internal/webhook   signed outgoing invoice events: emit in the state-change tx, deliver from the worker
   internal/tracking  four-step public tracking view (pure)

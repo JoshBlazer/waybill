@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -34,7 +35,33 @@ type Config struct {
 	// WebhookAllowPrivate lets webhook endpoints use http and private hosts
 	// (WAYBILL_WEBHOOK_ALLOW_PRIVATE=1). Refused unless every chain is Anvil.
 	WebhookAllowPrivate bool
+	// SignerKey (WAYBILL_SIGNER_KEY, hex) or SignerKeyFile
+	// (WAYBILL_SIGNER_KEY_FILE) is the key the worker signs sweeps and
+	// payouts with. Unset means the worker sends nothing. Test networks only,
+	// like everything else.
+	SignerKey     Secret
+	SignerKeyFile string
 }
+
+// Secret is a string that never prints: fmt and slog show "[redacted]".
+type Secret string
+
+// String hides the value.
+func (Secret) String() string { return "[redacted]" }
+
+// GoString hides the value under %#v too.
+func (Secret) GoString() string { return "[redacted]" }
+
+// LogValue hides the value in structured logs.
+func (Secret) LogValue() slog.Value { return slog.StringValue("[redacted]") }
+
+// MarshalJSON hides the value when a struct holding it is encoded, as slog's
+// JSON handler does with a logged Config: LogValue covers only top-level
+// attributes, not nested fields.
+func (Secret) MarshalJSON() ([]byte, error) { return []byte(`"[redacted]"`), nil }
+
+// MarshalText hides the value from text encoders.
+func (Secret) MarshalText() ([]byte, error) { return []byte("[redacted]"), nil }
 
 // Getenv matches os.Getenv so tests can supply their own environment.
 type Getenv func(string) string
@@ -57,6 +84,11 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		DeploymentsDir:    withDefault(getenv("WAYBILL_DEPLOYMENTS_DIR"), "../contracts/deployments"),
 		WebURL:            strings.TrimRight(withDefault(getenv("WAYBILL_WEB_URL"), "http://localhost:3000"), "/"),
 		DevContractorKey:  getenv("WAYBILL_DEV_CONTRACTOR_KEY"),
+		SignerKey:         Secret(getenv("WAYBILL_SIGNER_KEY")),
+		SignerKeyFile:     getenv("WAYBILL_SIGNER_KEY_FILE"),
+	}
+	if cfg.SignerKey != "" && cfg.SignerKeyFile != "" {
+		return Config{}, errors.New("config: set WAYBILL_SIGNER_KEY or WAYBILL_SIGNER_KEY_FILE, not both")
 	}
 	if getenv("WAYBILL_WEBHOOK_ALLOW_PRIVATE") == "1" {
 		for _, c := range chains {
