@@ -30,7 +30,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | A client retries a create request. | Idempotency keys, stored in the same transaction as the effect. | I6 tests *(stage 1)* |
 | A worker crashes after calling the provider but before recording it. | The provider reference equals our payout id, so the provider rejects the duplicate. The `unknown` state reconciles before any resend. | `TestPayout_CrashAfterSubmitDoesNotDoublePay` *(stage 3)* |
 | A webhook is replayed. | Unique `(provider, event_id)`, processed once. | I14 tests *(stage 3)* |
-| A replaced EVM transaction and the original both mine. | Both share one nonce, so only one can mine. Every hash is watched. | I10/I11 tests *(stage 2)* |
+| A replaced EVM transaction and the original both mine. | Both share one nonce, so only one can mine. Every hash is recorded before it is sent, and watched. | `TestTxMgr_StuckTransactionIsReplaced` *(exists)* |
 | A batch payout is resubmitted. | `Vault.payout` rejects a reused payout id on-chain, whichever contract calls it. | `test_RevertWhen_PayoutIdReused`, `test_RevertWhen_PayoutIdReusedAcrossBatches`, `test_RevertWhen_BatchResubmitted`, `invariant_PayoutIdPaidAtMostOnce` *(exist)* |
 | The same deposit log is processed twice. | Unique `(network, tx_hash, log_index)`. | I9 test *(stage 1)* |
 
@@ -59,7 +59,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | Risk | Guard | Proof |
 |---|---|---|
 | The hot signing key leaks. | Vault per-transaction and daily limits (fail closed when unset); `PAUSER` role, and only the admin can unpause; signer behind an interface so a remote signer can replace it. | `test_RevertWhen_OverDailyLimit`, `test_PauseStopsPayoutsAndOnlyAdminUnpauses`, `testFuzz_DailyTotalNeverExceedsLimit` *(exist)* |
-| A private key appears in logs. | `secret.String` redacts. No key is ever formatted with `%v`. | I15 test *(stage 1)* |
+| A private key appears in logs. | Keys live behind the `txmgr.Signer` interface; `LocalSigner` prints only its address. | `TestSecret_NeverAppearsInLogs` *(exists)* |
 | Two processes sign with the same key and collide on nonces. | Single-writer lease per key. | `TestTxMgr_ConcurrentSendersNeverShareNonce` (I10) *(exists)* |
 | Webhook signing secrets are read from the database. | They must be readable to sign, so they are stored as given (test-mode `whsec_test_…` only), never returned after creation, never logged, and kept out of idempotency records. No KMS encryption at rest (ADR-038). | `TestWebhookEndpoints_IdempotentCreateDoesNotReplaySecret` *(exists)* |
 | A webhook URL is used to reach Waybill's own network (SSRF). | https and public hosts only at registration; the dialer re-checks the resolved address; redirects are not followed. | `TestCheckURL`, `TestNewClient_RefusesPrivateAddressesAfterResolution`, `TestWebhook_PrivateAddressAtDeliveryIsRefused` *(exist)* |
@@ -71,7 +71,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 
 | Risk | Guard | Proof |
 |---|---|---|
-| A transaction is stuck with a low fee. | Replacement with bumped fees; the stuck-transaction detector comes with the plumbing. | `TestTxMgr_ReplacementBumpsBothFees` (I11) *(exists)* |
+| A transaction is stuck with a low fee. | Replacement with both fees bumped after `StuckAfter`; fees above the cap wait for a person. | `TestTxMgr_ReplacementBumpsBothFees`, `TestTxMgr_StuckTransactionIsReplaced` (I11) *(exist)* |
 | Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted (re-quoting comes with rates in stage 3). | `TestInvoice_LatePaymentAccepted` *(exists)* |
 | Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths; the short amount is credited to the contractor at finality, and a top-up moves the invoice on. The contractor's "accept shortfall" action is stage 3. | `TestWatcher_UnderpaidStaysUnderpaidAtFinality`, `TestWatcher_UnderpaidThenTopUp`, `TestWatcher_TwoPartPaymentIsConfirmedNotStuckUnderpaid` *(exist)* |
 | A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_UnknownIsReconciled` *(stage 3)* |

@@ -47,8 +47,8 @@ Build the whole path end to end before deepening any part of it.
 
 - [x] Reorg handling in the watcher (block-hash chain, walk back, reverse entries). Test forces a reorg on Anvil with `evm_snapshot`/`evm_revert`.
 - [x] Transaction manager nonce and fee logic: design note, `txmgr.NextNonce`, `txmgr.InitialFees`, `txmgr.Replacement`, and tests for I10 and I11, including `rapid` properties.
-- [ ] Transaction manager plumbing: single-writer lease, broadcast, attempt recording, receipt watching.
-- [ ] Gas estimation failure handling.
+- [x] Transaction manager plumbing: single-writer lease, broadcast, attempt recording, receipt watching.
+- [x] Gas estimation failure handling.
 - [x] Underpaid, overpaid, late and duplicate payments.
 - [ ] Sweeping to the vault; vault limits and pause.
 - [x] `BatchPayout` contract with the payout-id guard; Foundry invariant tests.

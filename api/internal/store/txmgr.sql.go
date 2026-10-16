@@ -8,6 +8,9 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/google/uuid"
 )
 
 const acquireSignerLease = `-- name: AcquireSignerLease :one
@@ -47,6 +50,281 @@ func (q *Queries) AcquireSignerLease(ctx context.Context, arg AcquireSignerLease
 	var i AcquireSignerLeaseRow
 	err := row.Scan(&i.LeaseOwner, &i.LeaseExpiresAt)
 	return i, err
+}
+
+const finishOutboundTx = `-- name: FinishOutboundTx :execrows
+UPDATE outbound_txs
+SET state = $1, mined_hash = $2, mined_block = $3, updated_at = now()
+WHERE id = $4 AND state = 'pending'
+`
+
+type FinishOutboundTxParams struct {
+	State      string
+	MinedHash  *string
+	MinedBlock *int64
+	ID         uuid.UUID
+}
+
+func (q *Queries) FinishOutboundTx(ctx context.Context, arg FinishOutboundTxParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishOutboundTx,
+		arg.State,
+		arg.MinedHash,
+		arg.MinedBlock,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getOutboundTxByRef = `-- name: GetOutboundTxByRef :one
+
+SELECT id, signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state, failure, mined_hash, mined_block, created_at, updated_at FROM outbound_txs WHERE purpose = $1 AND ref_id = $2
+`
+
+type GetOutboundTxByRefParams struct {
+	Purpose string
+	RefID   string
+}
+
+// Outbound transactions --------------------------------------------------
+func (q *Queries) GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error) {
+	row := q.db.QueryRow(ctx, getOutboundTxByRef, arg.Purpose, arg.RefID)
+	var i OutboundTx
+	err := row.Scan(
+		&i.ID,
+		&i.Signer,
+		&i.Network,
+		&i.Nonce,
+		&i.Purpose,
+		&i.RefID,
+		&i.ToAddress,
+		&i.Data,
+		&i.Value,
+		&i.GasLimit,
+		&i.State,
+		&i.Failure,
+		&i.MinedHash,
+		&i.MinedBlock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertFailedOutboundTx = `-- name: InsertFailedOutboundTx :one
+INSERT INTO outbound_txs (signer, network, nonce, purpose, ref_id, to_address, data, value, state, failure)
+VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, 'failed', $8)
+RETURNING id, signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state, failure, mined_hash, mined_block, created_at, updated_at
+`
+
+type InsertFailedOutboundTxParams struct {
+	Signer    string
+	Network   string
+	Purpose   string
+	RefID     string
+	ToAddress string
+	Data      []byte
+	Value     money.Amount
+	Failure   *string
+}
+
+// A transaction that failed before a nonce was assigned. Nothing was sent.
+func (q *Queries) InsertFailedOutboundTx(ctx context.Context, arg InsertFailedOutboundTxParams) (OutboundTx, error) {
+	row := q.db.QueryRow(ctx, insertFailedOutboundTx,
+		arg.Signer,
+		arg.Network,
+		arg.Purpose,
+		arg.RefID,
+		arg.ToAddress,
+		arg.Data,
+		arg.Value,
+		arg.Failure,
+	)
+	var i OutboundTx
+	err := row.Scan(
+		&i.ID,
+		&i.Signer,
+		&i.Network,
+		&i.Nonce,
+		&i.Purpose,
+		&i.RefID,
+		&i.ToAddress,
+		&i.Data,
+		&i.Value,
+		&i.GasLimit,
+		&i.State,
+		&i.Failure,
+		&i.MinedHash,
+		&i.MinedBlock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertOutboundAttempt = `-- name: InsertOutboundAttempt :one
+INSERT INTO outbound_tx_attempts (outbound_tx_id, hash, max_fee, tip)
+VALUES ($1, $2, $3, $4)
+RETURNING id, outbound_tx_id, hash, max_fee, tip, broadcast_at
+`
+
+type InsertOutboundAttemptParams struct {
+	OutboundTxID uuid.UUID
+	Hash         string
+	MaxFee       money.Amount
+	Tip          money.Amount
+}
+
+func (q *Queries) InsertOutboundAttempt(ctx context.Context, arg InsertOutboundAttemptParams) (OutboundTxAttempt, error) {
+	row := q.db.QueryRow(ctx, insertOutboundAttempt,
+		arg.OutboundTxID,
+		arg.Hash,
+		arg.MaxFee,
+		arg.Tip,
+	)
+	var i OutboundTxAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.OutboundTxID,
+		&i.Hash,
+		&i.MaxFee,
+		&i.Tip,
+		&i.BroadcastAt,
+	)
+	return i, err
+}
+
+const insertOutboundTx = `-- name: InsertOutboundTx :one
+INSERT INTO outbound_txs (signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+RETURNING id, signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state, failure, mined_hash, mined_block, created_at, updated_at
+`
+
+type InsertOutboundTxParams struct {
+	Signer    string
+	Network   string
+	Nonce     *int64
+	Purpose   string
+	RefID     string
+	ToAddress string
+	Data      []byte
+	Value     money.Amount
+	GasLimit  *int64
+}
+
+func (q *Queries) InsertOutboundTx(ctx context.Context, arg InsertOutboundTxParams) (OutboundTx, error) {
+	row := q.db.QueryRow(ctx, insertOutboundTx,
+		arg.Signer,
+		arg.Network,
+		arg.Nonce,
+		arg.Purpose,
+		arg.RefID,
+		arg.ToAddress,
+		arg.Data,
+		arg.Value,
+		arg.GasLimit,
+	)
+	var i OutboundTx
+	err := row.Scan(
+		&i.ID,
+		&i.Signer,
+		&i.Network,
+		&i.Nonce,
+		&i.Purpose,
+		&i.RefID,
+		&i.ToAddress,
+		&i.Data,
+		&i.Value,
+		&i.GasLimit,
+		&i.State,
+		&i.Failure,
+		&i.MinedHash,
+		&i.MinedBlock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listOutboundAttempts = `-- name: ListOutboundAttempts :many
+SELECT id, outbound_tx_id, hash, max_fee, tip, broadcast_at FROM outbound_tx_attempts WHERE outbound_tx_id = $1 ORDER BY id
+`
+
+func (q *Queries) ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error) {
+	rows, err := q.db.Query(ctx, listOutboundAttempts, outboundTxID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OutboundTxAttempt
+	for rows.Next() {
+		var i OutboundTxAttempt
+		if err := rows.Scan(
+			&i.ID,
+			&i.OutboundTxID,
+			&i.Hash,
+			&i.MaxFee,
+			&i.Tip,
+			&i.BroadcastAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingOutboundTxs = `-- name: ListPendingOutboundTxs :many
+SELECT id, signer, network, nonce, purpose, ref_id, to_address, data, value, gas_limit, state, failure, mined_hash, mined_block, created_at, updated_at FROM outbound_txs
+WHERE signer = $1 AND network = $2 AND state = 'pending'
+ORDER BY nonce
+`
+
+type ListPendingOutboundTxsParams struct {
+	Signer  string
+	Network string
+}
+
+func (q *Queries) ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error) {
+	rows, err := q.db.Query(ctx, listPendingOutboundTxs, arg.Signer, arg.Network)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OutboundTx
+	for rows.Next() {
+		var i OutboundTx
+		if err := rows.Scan(
+			&i.ID,
+			&i.Signer,
+			&i.Network,
+			&i.Nonce,
+			&i.Purpose,
+			&i.RefID,
+			&i.ToAddress,
+			&i.Data,
+			&i.Value,
+			&i.GasLimit,
+			&i.State,
+			&i.Failure,
+			&i.MinedHash,
+			&i.MinedBlock,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSignerNonce = `-- name: LockSignerNonce :one
