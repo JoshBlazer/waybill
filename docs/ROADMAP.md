@@ -56,6 +56,8 @@ Build the whole path end to end before deepening any part of it.
 
 **Exit check:** for each failure listed above, a test forces it and passes. The command runs in CI.
 
+Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `forge test` (CI profile) 36 tests, `make e2e` 4 of 4, plus a live sweep on Base Sepolia. Failure-by-failure table in [the stage 2 walkthrough](walkthroughs/stage-2.md#exit-check).
+
 ## Stage 3 — Naira settlement *(first public milestone)*
 
 - [ ] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider.
