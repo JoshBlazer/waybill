@@ -503,6 +503,36 @@ func (q *Queries) ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID)
 	return items, nil
 }
 
+const listDueInvoices = `-- name: ListDueInvoices :many
+SELECT id FROM invoices WHERE state = 'open' AND expires_at <= $1 ORDER BY expires_at LIMIT $2
+`
+
+type ListDueInvoicesParams struct {
+	Now time.Time
+	Max int32
+}
+
+// Open invoices past their expiry, oldest first.
+func (q *Queries) ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listDueInvoices, arg.Now, arg.Max)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInvoiceEvents = `-- name: ListInvoiceEvents :many
 SELECT id, invoice_id, type, from_state, to_state, data, created_at FROM invoice_events WHERE invoice_id = $1 ORDER BY id
 `

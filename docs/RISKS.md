@@ -70,7 +70,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | Risk | Guard | Proof |
 |---|---|---|
 | A transaction is stuck with a low fee. | Replacement with bumped fees. | I11 test *(stage 2)* |
-| Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted and re-quoted. | `TestInvoice_LatePaymentAccepted` *(stage 2)* |
-| Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths. | Underpaid tests *(stage 2–3)* |
+| Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted (re-quoting comes with rates in stage 3). | `TestInvoice_LatePaymentAccepted` *(exists)* |
+| Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths; the short amount is credited to the contractor at finality, and a top-up moves the invoice on. The contractor's "accept shortfall" action is stage 3. | `TestWatcher_UnderpaidStaysUnderpaidAtFinality`, `TestWatcher_UnderpaidThenTopUp`, `TestWatcher_TwoPartPaymentIsConfirmedNotStuckUnderpaid` *(exist)* |
 | A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_UnknownIsReconciled` *(stage 3)* |
 | Funds sent on the wrong network to the right address. | CREATE2 addresses are reproducible on any network where the factory is deployed at the same address; recovery is documented. | Runbook *(stage 6)* |
