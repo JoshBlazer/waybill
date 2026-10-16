@@ -20,12 +20,14 @@ type Querier interface {
 	// with the same key blocks here until the first transaction ends.
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (string, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
+	DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBlocksFromParams) error
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
 	GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error)
 	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
 	GetChainCursor(ctx context.Context, network string) (int64, error)
+	GetChainTip(ctx context.Context, network string) (GetChainTipRow, error)
 	GetContractor(ctx context.Context, id uuid.UUID) (Contractor, error)
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
@@ -47,9 +49,12 @@ type Querier interface {
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
 	LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	// Newest first: the walk back to the common ancestor stops at the first match.
+	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
 	ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
+	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	// Payments (watcher) --------------------------------------------------------
@@ -58,8 +63,11 @@ type Querier interface {
 	ListWatchedAddresses(ctx context.Context, network string) ([]ListWatchedAddressesRow, error)
 	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
+	MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
+	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
+	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)

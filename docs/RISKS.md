@@ -38,7 +38,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 
 | Risk | Guard | Proof |
 |---|---|---|
-| A reorg removes a payment that was credited. | Credits move to *available* only at *final*. Confirmed-but-reorged payments are reversed. | I8 test *(stage 2)* |
+| A reorg removes a payment that was credited. | Credits move to *available* only at *final*. Confirmed-but-reorged payments are reversed. | `TestWatcher_ReorgReversesConfirmedPayment` (I8) *(exists)* |
 | A sweep logs an amount different from what moved. | Events are emitted before external calls; the factory reverts unless the sweep moves exactly the announced amount. | `test_RevertWhen_SweepMovesDifferentAmountThanAnnounced` *(exists)* |
 | Fake token: a payer sends a token with the same symbol from another contract. | Only `chain_assets` contract addresses are recognised. | `TestWatcher_IgnoresUnknownToken` *(stage 1)* |
 | An RPC lies or errors and a payment is assumed. | Confirmations read from the chain the watcher follows. RPC errors never advance state. Cross-checking with a second RPC *(stage 5)*. | I12 tests *(stage 2, 5)* |
