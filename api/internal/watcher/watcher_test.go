@@ -42,23 +42,46 @@ var (
 )
 
 // fakeChain is an in-memory chain. Each block's header carries a
-// "version" in Extra, so replacing a block changes its hash.
+// "version" in Extra and its parent's hash, so replacing a block changes its
+// hash and the hash of every block above it, as on a real chain.
 type fakeChain struct {
-	mu        sync.Mutex
-	head      uint64
-	versions  map[uint64]byte
-	logs      []types.Log
-	failHead  bool
-	failLogs  bool
-	finalized int64    // -1: the node cannot say
-	queried   []uint64 // FromBlock of every log query
+	mu          sync.Mutex
+	head        uint64
+	versions    map[uint64]byte
+	logs        []types.Log
+	failHead    bool
+	failLogs    bool
+	failHeaders bool
+	finalized   int64    // -1: the node cannot say
+	queried     []uint64 // FromBlock of every log query
 }
 
 func newFakeChain() *fakeChain { return &fakeChain{versions: map[uint64]byte{}, finalized: -1} }
 
 func (c *fakeChain) header(n uint64) *types.Header {
-	return &types.Header{Number: new(big.Int).SetUint64(n), Extra: []byte{c.versions[n]}, Difficulty: big.NewInt(0)}
+	var h *types.Header
+	parent := common.Hash{}
+	for i := uint64(0); i <= n; i++ {
+		h = &types.Header{Number: new(big.Int).SetUint64(i), ParentHash: parent, Extra: []byte{c.versions[i]}, Difficulty: big.NewInt(0)}
+		parent = h.Hash()
+	}
+	return h
 }
+
+// reorg replaces every block from n to the head. Logs in those blocks for
+// which drop returns true are not in the new chain; the others are included
+// again at the same height, in a block with a new hash.
+func (c *fakeChain) reorg(n uint64, drop func(types.Log) bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := n; i <= c.head; i++ {
+		c.versions[i]++
+	}
+	c.logs = slices.DeleteFunc(c.logs, func(l types.Log) bool { return l.BlockNumber >= n && drop(l) })
+}
+
+func dropAll(types.Log) bool { return true }
+func keepAll(types.Log) bool { return false }
 
 func (c *fakeChain) BlockNumber(context.Context) (uint64, error) {
 	c.mu.Lock()
@@ -72,6 +95,9 @@ func (c *fakeChain) BlockNumber(context.Context) (uint64, error) {
 func (c *fakeChain) HeaderByNumber(_ context.Context, n *big.Int) (*types.Header, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.failHeaders {
+		return nil, errors.New("rpc: timeout")
+	}
 	if n.Sign() < 0 { // the "finalized" tag
 		if c.finalized < 0 {
 			return nil, errors.New("rpc: finalized block not available")
@@ -96,6 +122,7 @@ func (c *fakeChain) FilterLogs(_ context.Context, q ethereum.FilterQuery) ([]typ
 		if len(q.Addresses) > 0 && l.Address != q.Addresses[0] {
 			continue
 		}
+		l.BlockHash = c.header(l.BlockNumber).Hash() // the block it is in now
 		out = append(out, l)
 	}
 	return out, nil
@@ -276,13 +303,19 @@ func TestWatcher_DoesNotConfirmReplacedBlock(t *testing.T) {
 	if err := r.w.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	r.chain.versions[5] = 1 // a reorg replaced block 5
+	r.chain.reorg(5, keepAll) // block 5 replaced; the transfer is in the new one
 	r.chain.head = 30
 	if err := r.w.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, ps := r.state(t); ps["detected"] != 1 || ps["confirmed"] != 0 {
-		t.Fatalf("payments %v; a payment in a replaced block must not be confirmed", ps)
+	// The sighting in the old block is reorged without ever being
+	// confirmed; the sighting in the new block is a new payment.
+	var oldConfirmed int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM payments WHERE state = 'reorged' AND confirmed_at IS NOT NULL`).Scan(&oldConfirmed); err != nil {
+		t.Fatal(err)
+	}
+	if _, ps := r.state(t); ps["reorged"] != 1 || oldConfirmed != 0 {
+		t.Fatalf("payments %v (%d reorged after confirming); a payment in a replaced block must not be confirmed", ps, oldConfirmed)
 	}
 }
 

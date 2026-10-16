@@ -7,11 +7,11 @@ This document describes the system as designed. Sections marked *(planned, stage
 | Component | Where | Responsibility |
 |---|---|---|
 | **API** (`waybill api`) | `api/cmd/waybill`, `api/internal/httpapi` | REST under `/v1`, defined in `openapi/waybill.yaml`. Idempotent creation endpoints. Server-Sent Events for tracking. Writes state changes and outbox rows in one transaction. |
-| **Worker** (`waybill worker`) | `api/internal/outbox` *(planned, stage 1)* | Leases outbox rows with `FOR UPDATE SKIP LOCKED` and runs handlers: sweeps, payouts, webhooks, conversions. At-least-once execution with idempotent handlers. |
-| **Chain watcher** (`waybill watcher`) | `api/internal/watcher` *(planned, stage 1)* | Follows each configured chain block by block. Detects deposits, tracks detected, confirmed and final, and detects reorgs by block hash. |
+| **Worker** (`waybill worker`) | `api/internal/outbox` *(planned, stage 2)* | Leases outbox rows with `FOR UPDATE SKIP LOCKED` and runs handlers: sweeps, payouts, webhooks, conversions. At-least-once execution with idempotent handlers. |
+| **Chain watcher** (`waybill watcher`) | `api/internal/watcher` | Follows each configured chain block by block. Detects deposits, tracks detected, confirmed and final, and detects reorgs by block hash. |
 | **Transaction manager** | `api/internal/txmgr` *(planned, stage 2)* | The only writer for each signing key. Assigns nonces, estimates and bumps EIP-1559 fees, and records every hash a payment has had. Runs inside the worker. |
-| **Ledger** | `api/internal/ledger` *(planned, stage 1)* | Double-entry, append-only, multi-asset. Balance is enforced by PostgreSQL. |
-| **State machines** | `api/internal/statemachine` *(planned, stage 1)* | Pure transition functions for invoices and payouts. No I/O. |
+| **Ledger** | `api/internal/ledger` | Double-entry, append-only, multi-asset. Balance is enforced by PostgreSQL. |
+| **State machines** | `api/internal/statemachine` | Pure transition functions for invoices and payouts. No I/O. |
 | **Test-money guard** | `api/internal/safety` | Refuses to start on a non-test chain or a live provider key. Runs before any subcommand touches a network. |
 | **Contracts** | `contracts/` | Deposit forwarder clones (CREATE2), vault, batch payout, mock 6-decimal stablecoin. |
 | **Web** | `web/` | Next.js App Router. Tracking page, payment link, contractor and payer apps. Typed against the OpenAPI contract. |
@@ -114,7 +114,7 @@ All amounts use the `minor_units` domain: whole **minor units** of a named asset
 | `invoice_events` | `id` bigserial, `invoice_id`, `type`, `data`, `created_at` | Feeds the tracking page and SSE replay (`Last-Event-ID`). |
 | `rate_quotes` | `id`, `pair`, `rate_num`, `rate_den`, `fee`, `expires_at`, `source` | A rate is a ratio of integers, never a decimal float. |
 | `deposit_addresses` | `network`, `address`, `invoice_id`, `salt` | Counterfactual CREATE2 address per invoice and network. |
-| `chain_blocks` | `network`, `height`, `hash`, `parent_hash` | The watcher's view of the canonical chain, used for reorg detection. |
+| `chain_blocks` | `network`, `height`, `hash` | The hash of the last block of each range the watcher has scanned (the newest 4,096 blocks), used to detect reorgs and find the common ancestor. |
 | `payments` | `id`, `network`, `tx_hash`, `log_index`, `block_hash`, `amount`, `state` | Unique on `(network, tx_hash, log_index)`, so duplicate sightings are no-ops. |
 | `payouts` | `id`, `state`, `rail` (`paystack`, `evm`), `amount`, `provider_ref` | `provider_ref` = our payout id, so the provider deduplicates too. |
 | `outbound_txs` | `id`, `signer`, `network`, `nonce`, `purpose`, `ref_id`, `state` | One row per logical transaction. Unique on `(signer, network, nonce)`. |
@@ -216,8 +216,8 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I5 | **Any sequence of postings keeps every entry balanced and the trial balance at zero.** | Posting engine | `rapid` property `TestLedger_TrialBalanceAlwaysZero` *(exists, passes)* |
 | I6 | **Money-moving requests are idempotent.** Same key and same body give the same response; same key and a different body give 422. | `idempotency_keys` written in the same tx as the effect | `TestCreateInvoice_IdempotentRetry`, `TestCreateInvoice_KeyReusedWithDifferentBody`, `TestCreateInvoice_ConcurrentSameKeyCreatesOne`, `TestCreateInvoice_FailedRequestDoesNotBurnKey` in `internal/httpapi` *(exist)* |
 | I7 | **State machines are total and pure.** | `statemachine` package imports no I/O packages | `TestInvoice_AllPairs` (72 pairs), `TestStatemachine_NoIOImports` in `api/internal/statemachine` *(exist)*; `TestPayout_AllPairs` *(stage 3)* |
-| I8 | **A payment is not final when first seen; reorgs reverse.** | Watcher: detected → confirmed (N blocks) → final (`finalized` tag; depth on Anvil); a payment whose block hash changed is never confirmed (`TestWatcher_DoesNotConfirmReplacedBlock`, exists). Reversal of confirmed payments: | `TestWatcher_ReorgReversesConfirmedPayment` (Anvil snapshot/revert via testcontainers) *(stage 2)* |
-| I9 | **Duplicate sightings are no-ops.** | Unique `(network, tx_hash, log_index)` | `TestWatcher_DuplicateLogIsNoop` *(exists)* |
+| I8 | **A payment is not final when first seen; reorgs reverse.** | Watcher: detected → confirmed (N blocks) → final (`finalized` tag; depth on Anvil); a payment whose block hash changed is never confirmed; a reorg walks back to the common ancestor, reverses confirmed payments and rescans | `TestWatcher_ReorgReversesConfirmedPayment` (Anvil snapshot/revert via testcontainers), `TestWatcher_DoesNotConfirmReplacedBlock`, `TestWatcher_ReorgUndoesConfirmedPayment`, `TestWatcher_ReorgReincludedPaymentCountsOnce`, `TestWatcher_ReorgKeepsPaymentsOutsideReplacedBlocks`, `TestWatcher_ReorgRPCErrorChangesNothing` *(exist)* |
+| I9 | **Duplicate sightings are no-ops.** | Unique `(network, tx_hash, log_index)` among payments that are not reorged | `TestWatcher_DuplicateLogIsNoop` *(exists)* |
 | I10 | **One writer per signing key; no nonce is used twice.** | `signer_nonces` lease; unique `(signer, network, nonce)` | `TestTxMgr_ConcurrentSendersNeverShareNonce` *(stage 2)* |
 | I11 | **Stuck transactions are replaced by raising both fees by at least the node's minimum bump; every hash is recorded.** | txmgr fee logic | `TestTxMgr_ReplacementBumpsBothFees` (`rapid`), `TestTxMgr_AllAttemptHashesRecorded` *(stage 2)* |
 | I12 | **"Couldn't find out" is distinct from "no".** An RPC or provider error never becomes "not paid" or "not sent". | Tri-state results (`Known(true)`, `Known(false)`, `Unknown(err)`); payout `unknown` state | `TestWatcher_RPCErrorDoesNotAdvance`, `TestWatcher_FinalizedTagUnknownFinalisesNothing`, `TestCheck_RPCUnreachableFailsClosed` *(exist)*; `TestPayout_ProviderTimeoutGoesUnknownNotFailed` *(stage 3)* |
@@ -239,7 +239,10 @@ Each invariant names the test that proves it. A test that does not exist yet car
 ## 8. Chain watching
 
 - Polls `eth_getBlockByNumber` and `eth_getLogs` for ERC-20 `Transfer` events to known deposit addresses. Polling (rather than subscriptions) survives RPC reconnects and is easy to replay.
-- Stores `(height, hash, parent_hash)` per block. If a new block's `parent_hash` does not match the stored hash at `height-1`, the watcher walks back to the common ancestor, marks payments in orphaned blocks `reorged`, posts reversing entries for any that were confirmed, and rescans.
+- Stores the hash of the last block of every scanned range, read before the range's logs. Each tick first compares the newest stored block and the block of every open payment with the node. Because each block commits to its parent, a replaced block anywhere below changes the newest stored hash too. On a mismatch the watcher walks the stored blocks back to the newest one that still matches (the common ancestor). Then, in one transaction, it marks payments in replaced blocks `reorged`, posts reversing entries for any that were confirmed, re-derives each affected invoice's state from its remaining payments, and moves the cursor back so the blocks are scanned again.
+- A transaction that a reorg dropped is usually included again later with the same hash and log index. The reorged row stays as history and the new sighting is a new payment, so uniqueness of `(network, tx_hash, log_index)` holds only among payments that are not reorged.
+- Final payments are never reversed. A reorg below finality reaches a settled invoice, which the state machine rejects, and the watcher logs it as an alert.
+- If the node's head is below a block already scanned, the watcher waits rather than rewinding: chains replace blocks, they do not shrink, so a short chain means a lagging node.
 - Per-network policy: `confirmations` for *confirmed*, and the `finalized` block tag (or a fixed depth on Anvil) for *final*.
 - An RPC error leaves the cursor where it was. It never marks anything as missing.
 

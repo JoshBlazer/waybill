@@ -26,6 +26,12 @@ type Asset struct {
 	Scale int16
 }
 
+type ChainBlock struct {
+	Network string
+	Height  int64
+	Hash    string
+}
+
 type ChainCursor struct {
 	Network   string
 	NextBlock int64
@@ -130,6 +136,7 @@ type Payment struct {
 	DetectedAt   time.Time
 	ConfirmedAt  *time.Time
 	FinalAt      *time.Time
+	ReorgedAt    *time.Time
 }
 
 type Posting struct {

@@ -45,7 +45,7 @@ Build the whole path end to end before deepening any part of it.
 
 ## Stage 2 — Hardening
 
-- [ ] Reorg handling in the watcher (block-hash chain, walk back, reverse entries). Test forces a reorg on Anvil with `evm_snapshot`/`evm_revert`.
+- [x] Reorg handling in the watcher (block-hash chain, walk back, reverse entries). Test forces a reorg on Anvil with `evm_snapshot`/`evm_revert`.
 - [ ] **[H] Transaction manager nonce and fee logic.** The assistant provides: a design note, signatures (`txmgr.NextNonce`, `txmgr.Replacement`, …) and failing tests for I10 and I11, including `rapid` properties.
 - [ ] Transaction manager plumbing: single-writer lease, broadcast, attempt recording, receipt watching.
 - [ ] Gas estimation failure handling.
