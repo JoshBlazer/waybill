@@ -86,6 +86,8 @@ func Authenticate(ctx context.Context, db store.DBTX, authorization string) (uui
 	if subtle.ConstantTimeCompare(row.SecretSha256, k.Hash[:]) != 1 {
 		return uuid.Nil, ErrUnauthenticated
 	}
+	// Best effort: a failure to record use must not refuse a valid key.
+	_ = store.New(db).TouchAPIKey(ctx, k.Prefix)
 	return row.ContractorID, nil
 }
 

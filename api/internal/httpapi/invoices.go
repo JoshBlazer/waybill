@@ -148,12 +148,16 @@ func notFound() Problem {
 	return problem(404, "not-found", "We can't find a payment with this tracking number.", "")
 }
 
-func (s *Server) invoiceJSON(inv invoice.Invoice) Invoice {
+func (s *Server) invoiceJSON(inv invoice.Invoice) Invoice { return InvoiceJSON(s.WebURL, inv) }
+
+// InvoiceJSON is an invoice as the API returns it. Webhook events carry the
+// same shape.
+func InvoiceJSON(webURL string, inv invoice.Invoice) Invoice {
 	return Invoice{
 		Id:               inv.ID,
 		TrackingCode:     inv.TrackingCode,
-		PayUrl:           s.WebURL + "/pay/" + inv.TrackingCode,
-		TrackUrl:         s.WebURL + "/t/" + inv.TrackingCode,
+		PayUrl:           webURL + "/pay/" + inv.TrackingCode,
+		TrackUrl:         webURL + "/t/" + inv.TrackingCode,
 		State:            InvoiceState(inv.State),
 		Description:      inv.Description,
 		Amount:           amountJSON(inv),

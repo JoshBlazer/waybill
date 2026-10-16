@@ -52,7 +52,7 @@ Build the whole path end to end before deepening any part of it.
 - [x] Underpaid, overpaid, late and duplicate payments.
 - [ ] Sweeping to the vault; vault limits and pause.
 - [x] `BatchPayout` contract with the payout-id guard; Foundry invariant tests.
-- [ ] Public API keys, and outgoing webhooks with signature, retries and delivery log.
+- [x] Public API keys, and outgoing webhooks with signature, retries and delivery log.
 
 **Exit check:** for each failure listed above, a test forces it and passes. The command runs in CI.
 

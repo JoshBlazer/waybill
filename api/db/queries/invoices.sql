@@ -16,6 +16,9 @@ SELECT k.contractor_id, k.secret_sha256
 FROM api_keys k
 WHERE k.prefix = @prefix AND k.revoked_at IS NULL;
 
+-- name: GetInvoiceTrackingCode :one
+SELECT tracking_code FROM invoices WHERE id = @id;
+
 -- name: GetContractor :one
 SELECT * FROM contractors WHERE id = @id;
 

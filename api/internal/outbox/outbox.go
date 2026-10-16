@@ -84,6 +84,21 @@ type Worker struct {
 	MaxAttempts int           // after this many failures the job is dead
 	// Backoff returns the wait before attempt+1 after a failed attempt.
 	Backoff func(attempt int) time.Duration
+	// Policies override MaxAttempts and Backoff per topic.
+	Policies map[string]Policy
+}
+
+// Policy is a topic's retry schedule.
+type Policy struct {
+	MaxAttempts int
+	Backoff     func(attempt int) time.Duration
+}
+
+func (w *Worker) policy(topic string) Policy {
+	if p, ok := w.Policies[topic]; ok {
+		return p
+	}
+	return Policy{MaxAttempts: w.MaxAttempts, Backoff: w.Backoff}
 }
 
 // DefaultBackoff doubles from 2 s up to 10 minutes.
@@ -146,13 +161,13 @@ func (w *Worker) record(ctx context.Context, log *slog.Logger, j Job, herr error
 	switch {
 	case herr == nil:
 		n, err = q.CompleteOutbox(ctx, store.CompleteOutboxParams{ID: j.ID, Owner: &owner})
-	case errors.Is(herr, ErrPermanent) || j.Attempt >= w.MaxAttempts:
+	case errors.Is(herr, ErrPermanent) || j.Attempt >= w.policy(j.Topic).MaxAttempts:
 		msg := herr.Error()
 		n, err = q.KillOutbox(ctx, store.KillOutboxParams{ID: j.ID, Owner: &owner, LastError: &msg})
 		log.Error("outbox: job is dead; needs a person", "err", herr)
 	default:
 		msg := herr.Error()
-		delay := w.Backoff(j.Attempt)
+		delay := w.policy(j.Topic).Backoff(j.Attempt)
 		n, err = q.RetryOutbox(ctx, store.RetryOutboxParams{ID: j.ID, Owner: &owner, LastError: &msg, DelayMs: delay.Milliseconds()})
 		log.Warn("outbox: job failed; will retry", "err", herr, "in", delay)
 	}

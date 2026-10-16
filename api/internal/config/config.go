@@ -31,6 +31,9 @@ type Config struct {
 	// DevContractorKey is the API key seed-dev installs for the local demo
 	// contractor. Local stacks only.
 	DevContractorKey string
+	// WebhookAllowPrivate lets webhook endpoints use http and private hosts
+	// (WAYBILL_WEBHOOK_ALLOW_PRIVATE=1). Refused unless every chain is Anvil.
+	WebhookAllowPrivate bool
 }
 
 // Getenv matches os.Getenv so tests can supply their own environment.
@@ -54,6 +57,14 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		DeploymentsDir:    withDefault(getenv("WAYBILL_DEPLOYMENTS_DIR"), "../contracts/deployments"),
 		WebURL:            strings.TrimRight(withDefault(getenv("WAYBILL_WEB_URL"), "http://localhost:3000"), "/"),
 		DevContractorKey:  getenv("WAYBILL_DEV_CONTRACTOR_KEY"),
+	}
+	if getenv("WAYBILL_WEBHOOK_ALLOW_PRIVATE") == "1" {
+		for _, c := range chains {
+			if c.Network != safety.EVMAnvil {
+				return Config{}, fmt.Errorf("config: WAYBILL_WEBHOOK_ALLOW_PRIVATE is for local Anvil stacks only; %s is configured", c.Network)
+			}
+		}
+		cfg.WebhookAllowPrivate = true
 	}
 	return cfg, nil
 }

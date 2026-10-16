@@ -104,6 +104,130 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/api-keys": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the contractor's API keys, newest first.
+     * @description Secrets are never returned; each key is identified by its public prefix.
+     */
+    get: operations["listApiKeys"];
+    put?: never;
+    /**
+     * Create an API key.
+     * @description Creates a new key for the authenticated contractor. The full key is in
+     *     this response only; Waybill stores a SHA-256 hash of it and cannot
+     *     show it again. Keys are always test-mode (`wb_test_…`).
+     *
+     *     Retrying with the same `Idempotency-Key` and body does not create a
+     *     second key and cannot return the first one again: it is a 409 whose
+     *     `detail` names the key that was created. Revoke it if it was not
+     *     saved. The same key with a different body is a 422.
+     */
+    post: operations["createApiKey"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/api-keys/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke an API key.
+     * @description The key stops working at once. Revoking is permanent and idempotent:
+     *     revoking a revoked key is a 204. Revoking the contractor's last active
+     *     key is a 409, so nobody locks themselves out.
+     */
+    delete: operations["revokeApiKey"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/webhook-endpoints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the contractor's webhook endpoints. */
+    get: operations["listWebhookEndpoints"];
+    put?: never;
+    /**
+     * Register a URL to receive signed events.
+     * @description Waybill POSTs a `WebhookEvent` to `url` for each subscribed event,
+     *     signed as described on `WebhookEvent`. The signing secret is in this
+     *     response only. A retry with the same `Idempotency-Key` and body is a
+     *     409 naming the endpoint, as for API keys.
+     *
+     *     `url` must be `https` on a public host. Private, loopback and
+     *     link-local addresses are refused here and again at delivery time
+     *     (after DNS resolution), so a webhook cannot reach Waybill's own
+     *     network. Local development may allow `http://localhost` through
+     *     server configuration; the API never does by default.
+     */
+    post: operations["createWebhookEndpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/webhook-endpoints/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Stop sending events to an endpoint.
+     * @description Disables the endpoint; no new deliveries are created and pending
+     *     retries are cancelled. Its delivery log is kept. Idempotent.
+     */
+    delete: operations["deleteWebhookEndpoint"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/webhook-endpoints/{id}/deliveries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The delivery log for an endpoint, newest first.
+     * @description One entry per attempt, with the response status and latency.
+     */
+    get: operations["listWebhookDeliveries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -226,6 +350,143 @@ export interface components {
       /** Format: date-time */
       updatedAt: string;
     };
+    CreateApiKeyRequest: {
+      /**
+       * @description A label to tell keys apart, e.g. where the key is used.
+       * @example Accounting export
+       */
+      name: string;
+    };
+    ApiKey: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /**
+       * @description The public start of the key, enough to recognise it.
+       * @example wb_test_k3m9x2qa
+       */
+      prefix: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      lastUsedAt?: string | null;
+      /** Format: date-time */
+      revokedAt?: string | null;
+    };
+    CreatedApiKey: components["schemas"]["ApiKey"] & {
+      /**
+       * @description The full key. Shown once; store it now.
+       * @example wb_test_k3m9x2qa_7Hq2pV9sLw4nX8rT1mZb6cYd
+       */
+      key: string;
+    };
+    ApiKeyList: {
+      items: components["schemas"]["ApiKey"][];
+    };
+    /**
+     * @description Invoice state changes, named after the state reached.
+     *     `invoice.reopened` means a reorg removed a payment and the invoice is
+     *     open again while Waybill rechecks the chain.
+     * @enum {string}
+     */
+    WebhookEventType:
+      | "invoice.received"
+      | "invoice.underpaid"
+      | "invoice.overpaid"
+      | "invoice.confirmed"
+      | "invoice.settled"
+      | "invoice.expired"
+      | "invoice.reopened";
+    CreateWebhookEndpointRequest: {
+      /**
+       * Format: uri
+       * @example https://example.com/hooks/waybill
+       */
+      url: string;
+      events: components["schemas"]["WebhookEventType"][];
+      description?: string;
+    };
+    WebhookEndpoint: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uri */
+      url: string;
+      events: components["schemas"]["WebhookEventType"][];
+      description?: string;
+      enabled: boolean;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    CreatedWebhookEndpoint: components["schemas"]["WebhookEndpoint"] & {
+      /** @description The signing secret. Shown once; store it now. */
+      secret: string;
+    };
+    WebhookEndpointList: {
+      items: components["schemas"]["WebhookEndpoint"][];
+    };
+    /** @description One attempt to deliver one event. */
+    WebhookDelivery: {
+      /** Format: int64 */
+      id: number;
+      /** @example evt_01J9ZQ7W3X4Y5Z6A7B8C9D0E1F */
+      eventId: string;
+      eventType: components["schemas"]["WebhookEventType"];
+      attempt: number;
+      /**
+       * @description `succeeded`: a 2xx response. `failed`: any other response, a
+       *     timeout or a connection error; retried with backoff. `refused`:
+       *     the URL resolved to a private address and nothing was sent.
+       * @enum {string}
+       */
+      outcome: "succeeded" | "failed" | "refused";
+      /** @description The HTTP status received, if any. */
+      responseStatus?: number | null;
+      latencyMs?: number | null;
+      /** @description Why it failed, without the response body. */
+      error?: string | null;
+      /**
+       * Format: date-time
+       * @description When the next retry runs; null after success or the last attempt.
+       */
+      nextAttemptAt?: string | null;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    WebhookDeliveryList: {
+      items: components["schemas"]["WebhookDelivery"][];
+      /**
+       * Format: int64
+       * @description Pass as `before` for the next page; null on the last page.
+       */
+      nextBefore?: number | null;
+    };
+    /**
+     * @description The body Waybill POSTs to a webhook endpoint (`Content-Type:
+     *     application/json`). Not an endpoint of this API; defined here so
+     *     clients can generate a type for it.
+     *
+     *     **Signature.** Each request has a header
+     *     `Waybill-Signature: t=<unix seconds>,v1=<hex>`, where `<hex>` is
+     *     HMAC-SHA256 with the endpoint secret over `<t>.<raw body>`. Verify
+     *     the HMAC over the raw bytes before parsing, compare in constant
+     *     time, and reject a `t` more than five minutes from now.
+     *
+     *     **Delivery.** At least once. The same event can arrive more than
+     *     once with the same `id`: process each `id` once. Events can arrive
+     *     out of order; `data.invoice.state` is the state when the event was
+     *     created. A non-2xx response or no response within 10 seconds is
+     *     retried with exponential backoff for about 24 hours.
+     */
+    WebhookEvent: {
+      /** @description Unique per event, the same on every retry. */
+      id: string;
+      type: components["schemas"]["WebhookEventType"];
+      /** Format: date-time */
+      createdAt: string;
+      data: {
+        invoice: components["schemas"]["Invoice"];
+      };
+    };
     Problem: {
       /**
        * @description A URI reference identifying the problem type.
@@ -252,6 +513,7 @@ export interface components {
   parameters: {
     /** @description Unique per logical request, 1–255 printable ASCII characters. */
     IdempotencyKey: string;
+    ResourceId: string;
     /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
     TrackingCode: string;
   };
@@ -392,6 +654,183 @@ export interface operations {
           "text/event-stream": string;
         };
       };
+      404: components["responses"]["Problem"];
+    };
+  };
+  listApiKeys: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The keys, including revoked ones. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiKeyList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  createApiKey: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateApiKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Created. `key` is shown once. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedApiKey"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  revokeApiKey: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  listWebhookEndpoints: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The endpoints, without secrets. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookEndpointList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  createWebhookEndpoint: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWebhookEndpointRequest"];
+      };
+    };
+    responses: {
+      /** @description Created. `secret` is shown once. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedWebhookEndpoint"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  deleteWebhookEndpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Disabled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  listWebhookDeliveries: {
+    parameters: {
+      query?: {
+        /** @description Return attempts older than this delivery id (from the previous page). */
+        before?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A page of attempts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookDeliveryList"];
+        };
+      };
+      401: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
     };
   };

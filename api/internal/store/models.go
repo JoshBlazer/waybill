@@ -19,6 +19,8 @@ type ApiKey struct {
 	SecretSha256 []byte
 	CreatedAt    time.Time
 	RevokedAt    *time.Time
+	Name         string
+	LastUsedAt   *time.Time
 }
 
 type Asset struct {
@@ -168,4 +170,37 @@ type SignerNonce struct {
 	NextNonce      int64
 	LeaseOwner     string
 	LeaseExpiresAt time.Time
+}
+
+type WebhookDelivery struct {
+	ID             int64
+	EndpointID     uuid.UUID
+	EventID        string
+	Attempt        int32
+	Outcome        string
+	ResponseStatus *int32
+	LatencyMs      *int32
+	Error          *string
+	NextAttemptAt  *time.Time
+	CreatedAt      time.Time
+}
+
+type WebhookEndpoint struct {
+	ID           uuid.UUID
+	ContractorID uuid.UUID
+	Url          string
+	Events       []string
+	Description  *string
+	Secret       string
+	CreatedAt    time.Time
+	DisabledAt   *time.Time
+}
+
+type WebhookEvent struct {
+	ID           string
+	ContractorID uuid.UUID
+	Type         string
+	InvoiceID    uuid.UUID
+	InvoiceState string
+	CreatedAt    time.Time
 }

@@ -20,6 +20,9 @@ type Querier interface {
 	// Accounts whose cached balance differs from the sum of their postings.
 	// Must always return no rows.
 	BalanceCacheMismatches(ctx context.Context) ([]BalanceCacheMismatchesRow, error)
+	// Pending deliveries to a disabled endpoint stop. Outbox jobs are not
+	// deleted; they are marked done, so the history stays.
+	CancelWebhookJobs(ctx context.Context, endpointID string) error
 	// Idempotency ----------------------------------------------------------------
 	// Inserts the key inside the caller's transaction. A concurrent request
 	// with the same key blocks here until the first transaction ends.
@@ -27,7 +30,13 @@ type Querier interface {
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	// Only the current lease holder can finish a job.
 	CompleteOutbox(ctx context.Context, arg CompleteOutboxParams) (int64, error)
+	// API key management and outgoing webhooks. See ADR-038.
+	// API keys ---------------------------------------------------------------
+	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (CreateAPIKeyRow, error)
+	// Webhook endpoints ------------------------------------------------------
+	CreateWebhookEndpoint(ctx context.Context, arg CreateWebhookEndpointParams) (WebhookEndpoint, error)
 	DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBlocksFromParams) error
+	DisableWebhookEndpoint(ctx context.Context, arg DisableWebhookEndpointParams) (int64, error)
 	// Outbox. See docs/ARCHITECTURE.md §7.
 	// With a dedupe key already used, nothing is inserted and no row returns.
 	EnqueueOutbox(ctx context.Context, arg EnqueueOutboxParams) (int64, error)
@@ -42,9 +51,12 @@ type Querier interface {
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
 	GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoice, error)
+	GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
 	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
+	GetWebhookEndpoint(ctx context.Context, id uuid.UUID) (WebhookEndpoint, error)
+	GetWebhookEvent(ctx context.Context, id string) (WebhookEvent, error)
 	InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) error
 	// Ledger queries. See docs/design/ledger.md.
 	// Creates an account, or returns the existing one with the same code. The
@@ -58,12 +70,16 @@ type Querier interface {
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
+	InsertWebhookDelivery(ctx context.Context, arg InsertWebhookDeliveryParams) error
+	// Events and deliveries ---------------------------------------------------
+	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) error
 	KillOutbox(ctx context.Context, arg KillOutboxParams) (int64, error)
 	LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID) (int64, error)
 	// Leases up to max ready jobs for owner. A job is ready when it is due, not
 	// finished, and not leased (or its lease expired: the worker crashed).
 	// SKIP LOCKED lets concurrent workers take disjoint jobs without waiting.
 	LeaseOutbox(ctx context.Context, arg LeaseOutboxParams) ([]LeaseOutboxRow, error)
+	ListAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]ListAPIKeysRow, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
@@ -74,10 +90,16 @@ type Querier interface {
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
+	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
 	// Payments (watcher) --------------------------------------------------------
 	// Every deposit address on a network, including expired invoices: late
 	// payments are still recorded (docs/RISKS.md §7).
 	ListWatchedAddresses(ctx context.Context, network string) ([]ListWatchedAddressesRow, error)
+	ListWebhookDeliveries(ctx context.Context, arg ListWebhookDeliveriesParams) ([]ListWebhookDeliveriesRow, error)
+	ListWebhookEndpoints(ctx context.Context, contractorID uuid.UUID) ([]WebhookEndpoint, error)
+	// Serialises revocations for one contractor, so two concurrent revokes
+	// cannot each see the other key as "still active" and remove both.
+	LockContractorAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]LockContractorAPIKeysRow, error)
 	// Locks the key's row until the caller's transaction ends. db_now is the
 	// database clock, so lease checks never depend on the caller's clock.
 	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
@@ -89,10 +111,14 @@ type Querier interface {
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
 	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
+	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)
+	// Records use at most once a minute per key, so authentication does not
+	// write on every request.
+	TouchAPIKey(ctx context.Context, prefix string) error
 	// Sum of all postings per asset. Every row must be zero.
 	TrialBalance(ctx context.Context) ([]TrialBalanceRow, error)
 	UpdateInvoiceState(ctx context.Context, arg UpdateInvoiceStateParams) error
