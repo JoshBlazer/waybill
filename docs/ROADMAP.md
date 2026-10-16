@@ -60,9 +60,9 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 
 ## Stage 3 — Naira settlement *(first public milestone)*
 
-- [ ] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider.
+- [ ] Rate provider interface. Fake implementation, then a decision record choosing the sandbox provider. *Interface, quoter and fake done (`api/internal/rates`); ADR-039 proposed.*
 - [ ] Rate lock at invoice creation; re-quote on expiry or late payment.
-- [ ] Identity and bank-name verification interface. Fake implementation, then a decision record choosing the sandbox provider.
+- [ ] Identity and bank-name verification interface. Fake implementation, then a decision record choosing the sandbox provider. *Interface, name matching and fake done (`api/internal/bankverify`); ADR-040 proposed.*
 - [ ] **[H] Payout state machine.** The assistant provides: a design note, `statemachine.PayoutTransition` signature, and the exhaustive failing pair table.
 - [ ] Paystack test-mode payout: transfer recipient, transfer, reconcile by reference, `unknown` state.
 - [ ] Paystack incoming webhooks: verify, store raw, process once.

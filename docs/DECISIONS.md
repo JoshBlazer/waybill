@@ -242,3 +242,19 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - OpenAPI 3.0 has no `webhooks` section, so the event body is defined as the `WebhookEvent` schema.
 - Replaying a create request cannot return a secret that was shown once, so a retry with the same `Idempotency-Key` and body is a 409 naming the resource. The idempotency record stores only the public part.
 - `WAYBILL_WEBHOOK_ALLOW_PRIVATE=1` allows http and private hosts for local testing, and config refuses it unless every chain is Anvil.
+
+## ADR-039 Rate provider: ExchangeRate-API's open endpoint
+**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only the `rates.Fake` provider exists.
+**Context:** A naira invoice locks a USDC→NGN rate when it is created (PRODUCT §4.1). `rates.Provider` returns a mid rate; `rates.Quoter` applies a spread and an expiry and refuses rates that are too old. Waybill runs on test money, so the rate needs to be realistic, not tradable. Paystack, already the payout provider, publishes no exchange rates.
+**Options considered:**
+- **ExchangeRate-API open endpoint** (`GET https://open.er-api.com/v6/latest/USD`). No key and no signup. Updated once a day; rate limited; attribution required; the data may be cached but not redistributed.
+- **CoinGecko** `simple/price` for `usd-coin` in NGN. A real USDC price, but it needs a demo API key (one more secret) and has tight rate limits.
+- **Fake only.** Deterministic, but the demo would show a made-up rate.
+**Decision (proposed):** ExchangeRate-API's open endpoint, read as USD→NGN and applied 1:1 to USDC. The rate is parsed from the JSON as decimal text into kobo per USDC with no floats (`rates.ParseRate`). It is cached for an hour, refused when older than 26 hours (`MaxAge`), and the tracking page credits it ("Rates by ExchangeRate-API").
+**Consequences:** One outbound HTTPS dependency, read-only and without a secret. A daily mid rate is not a market quote, which is acceptable for test money and stated on the page. Treating USDC as exactly 1 USD ignores small depegs; recorded in RISKS.md. If the endpoint is down, no naira quote is made and invoices can still be created with payout *hold* (I12).
+
+## ADR-040 Bank-name verification: Paystack Resolve Account Number
+**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only `bankverify.Fake` exists.
+**Context:** A contractor's bank account must belong to them before Waybill pays into it (RISKS §2). `bankverify.Resolver` asks for the account name; `bankverify.NameMatches` compares it with the legal name (every legal name part must appear, in any order; no fuzzy matching).
+**Decision (proposed):** Use Paystack's `GET /bank/resolve` through the same test-mode key as payouts (`paystack.Client` already implements `bankverify.Resolver`). No new vendor and no new secret.
+**Consequences:** Test-mode resolution returns test data, not real bank records, which is what a test-money project wants. A dedicated identity provider (BVN/NIN checks) is out of scope; recorded as a known gap in RISKS.md for any move to live money. A failed lookup is "could not verify", never "verified" (I12).
