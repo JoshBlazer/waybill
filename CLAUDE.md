@@ -26,10 +26,11 @@ Single suites: `make test-api`, `make test-contracts`, `make test-web`. Fast Go 
 api/                 Go module, one binary: cmd/waybill (api | worker | watcher | migrate | healthcheck)
   internal/safety    test-money guard (runs first in every service)
   internal/money     exact minor-unit amounts; no floats (AST-checked)
-  internal/ledger    double-entry ledger; post.go is HAND-WRITTEN by the owner
+  internal/ledger    double-entry ledger and posting engine
   internal/statemachine  pure invoice (and later payout) state machines
   internal/invoice   create invoices, load views, apply state transitions
   internal/watcher   EVM payment detection, confirmation, finality, reorgs
+  internal/txmgr     signing-key lease, nonces, EIP-1559 fees (transaction plumbing next)
   internal/outbox    transactional outbox: enqueue in the caller's tx; worker leases with SKIP LOCKED
   internal/webhook   signed outgoing invoice events: emit in the state-change tx, deliver from the worker
   internal/tracking  four-step public tracking view (pure)
@@ -72,9 +73,8 @@ Full list with proving tests: [docs/ARCHITECTURE.md §6](docs/ARCHITECTURE.md#6-
 
 ## How we work
 
-- **Hand-written modules.** For these two, Claude writes the design note, function signatures and failing tests, then **stops**. The owner implements; Claude reviews:
+- **Hand-written module.** For this one, Claude writes the design note, function signatures and failing tests, then **stops**. The owner implements; Claude reviews:
   - the payout state machine
-  - the nonce and fee logic in the transaction manager
 - **Everything else** Claude may implement, in small reviewable commits.
 - **Proof before claims.** Never say something works unless a command run in this session showed it. Name the command when reporting.
 - **Honest, current documents.** The README status table changes in the same commit as the work it describes. Neutral engineering voice; decisions recorded with reasons. The README's AI-assistance statement must stay true.

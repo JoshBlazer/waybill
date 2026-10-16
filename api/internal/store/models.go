@@ -164,6 +164,14 @@ type Posting struct {
 	Amount    money.Amount
 }
 
+type SignerNonce struct {
+	Signer         string
+	Network        string
+	NextNonce      int64
+	LeaseOwner     string
+	LeaseExpiresAt time.Time
+}
+
 type WebhookDelivery struct {
 	ID             int64
 	EndpointID     uuid.UUID

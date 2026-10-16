@@ -60,7 +60,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 |---|---|---|
 | The hot signing key leaks. | Vault per-transaction and daily limits (fail closed when unset); `PAUSER` role, and only the admin can unpause; signer behind an interface so a remote signer can replace it. | `test_RevertWhen_OverDailyLimit`, `test_PauseStopsPayoutsAndOnlyAdminUnpauses`, `testFuzz_DailyTotalNeverExceedsLimit` *(exist)* |
 | A private key appears in logs. | `secret.String` redacts. No key is ever formatted with `%v`. | I15 test *(stage 1)* |
-| Two processes sign with the same key and collide on nonces. | Single-writer lease per key. | I10 test *(stage 2)* |
+| Two processes sign with the same key and collide on nonces. | Single-writer lease per key. | `TestTxMgr_ConcurrentSendersNeverShareNonce` (I10) *(exists)* |
 | Webhook signing secrets are read from the database. | They must be readable to sign, so they are stored as given (test-mode `whsec_test_…` only), never returned after creation, never logged, and kept out of idempotency records. No KMS encryption at rest (ADR-038). | `TestWebhookEndpoints_IdempotentCreateDoesNotReplaySecret` *(exists)* |
 | A webhook URL is used to reach Waybill's own network (SSRF). | https and public hosts only at registration; the dialer re-checks the resolved address; redirects are not followed. | `TestCheckURL`, `TestNewClient_RefusesPrivateAddressesAfterResolution`, `TestWebhook_PrivateAddressAtDeliveryIsRefused` *(exist)* |
 | Bitcoin spending key on the server. | Server holds an xpub only. Config rejects private keys. | `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
@@ -71,7 +71,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 
 | Risk | Guard | Proof |
 |---|---|---|
-| A transaction is stuck with a low fee. | Replacement with bumped fees. | I11 test *(stage 2)* |
+| A transaction is stuck with a low fee. | Replacement with bumped fees; the stuck-transaction detector comes with the plumbing. | `TestTxMgr_ReplacementBumpsBothFees` (I11) *(exists)* |
 | Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted (re-quoting comes with rates in stage 3). | `TestInvoice_LatePaymentAccepted` *(exists)* |
 | Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths; the short amount is credited to the contractor at finality, and a top-up moves the invoice on. The contractor's "accept shortfall" action is stage 3. | `TestWatcher_UnderpaidStaysUnderpaidAtFinality`, `TestWatcher_UnderpaidThenTopUp`, `TestWatcher_TwoPartPaymentIsConfirmedNotStuckUnderpaid` *(exist)* |
 | A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_UnknownIsReconciled` *(stage 3)* |
