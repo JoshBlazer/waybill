@@ -93,6 +93,23 @@ func (r mrig) tick(t *testing.T) {
 	}
 }
 
+// untilFinished mines and ticks until the transaction is no longer pending,
+// as the worker would. Anvil seals blocks asynchronously, so a fixed number
+// of rounds can come too early on a slow machine.
+func (r mrig) untilFinished(t *testing.T, ref string) store.OutboundTx {
+	t.Helper()
+	for range 20 {
+		r.anvil.Mine(1)
+		r.tick(t)
+		if row := r.row(t, ref); row.State != "pending" {
+			return row
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("transaction %s still pending after 20 blocks", ref)
+	return store.OutboundTx{}
+}
+
 var recipient = common.HexToAddress("0x00000000000000000000000000000000000000b2")
 
 func payment(ref string) txmgr.Request {
@@ -114,10 +131,8 @@ func TestTxMgr_SubmitSendsAndHookRunsOnceWhenMined(t *testing.T) {
 	if r.row(t, "p1").State != "pending" || len(*r.hooks) != 0 {
 		t.Fatal("finished before reaching the required confirmations")
 	}
-	r.anvil.Mine(1)
+	row = r.untilFinished(t, "p1")
 	r.tick(t)
-	r.tick(t)
-	row = r.row(t, "p1")
 	if row.State != "mined" || row.MinedHash == nil || len(*r.hooks) != 1 || strings.ToLower((*r.hooks)[0].Hex()) != *row.MinedHash {
 		t.Fatalf("after confirmations: %+v, hooks %v; want mined once", row, *r.hooks)
 	}
@@ -176,9 +191,7 @@ func TestTxMgr_StuckTransactionIsReplaced(t *testing.T) {
 	if second.MaxFee.Big().Cmp(first.MaxFee.Big()) <= 0 || second.Tip.Big().Cmp(first.Tip.Big()) <= 0 {
 		t.Fatalf("replacement fees max %s tip %s do not both exceed max %s tip %s", second.MaxFee, second.Tip, first.MaxFee, first.Tip)
 	}
-	r.anvil.Mine(2)
-	r.tick(t)
-	row = r.row(t, "stuck")
+	row = r.untilFinished(t, "stuck")
 	if row.State != "mined" || *row.MinedHash != second.Hash {
 		t.Fatalf("row %+v; want mined by the replacement %s", row, second.Hash)
 	}
@@ -285,10 +298,7 @@ func TestTxMgr_FeeCapHoldsBroadcastUntilFeesFit(t *testing.T) {
 		t.Fatalf("row %+v with %d attempts; want pending and nothing sent", row, len(r.attempts(t, row)))
 	}
 	r.m.MaxFeeCap = big.NewInt(1_000_000_000_000)
-	r.tick(t)
-	r.anvil.Mine(2)
-	r.tick(t)
-	if row := r.row(t, "capped"); row.State != "mined" || len(r.attempts(t, row)) != 1 {
+	if row := r.untilFinished(t, "capped"); row.State != "mined" || len(r.attempts(t, row)) != 1 {
 		t.Fatalf("row %+v; want mined after fees fit", row)
 	}
 }
