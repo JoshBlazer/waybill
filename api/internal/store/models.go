@@ -46,6 +46,22 @@ type ChainToken struct {
 	AssetCode       string
 }
 
+type Checkout struct {
+	ID                    uuid.UUID
+	InvoiceID             uuid.UUID
+	Reference             string
+	Amount                money.Amount
+	AuthorizationUrl      *string
+	State                 string
+	Failure               *string
+	ProviderTransactionID *string
+	PaidAmount            money.Amount
+	CreatedAt             time.Time
+	ExpiresAt             time.Time
+	PaidAt                *time.Time
+	UpdatedAt             time.Time
+}
+
 type Contractor struct {
 	ID         uuid.UUID
 	LegalName  string

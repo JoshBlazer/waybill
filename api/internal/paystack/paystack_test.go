@@ -235,3 +235,31 @@ func TestClient_NeverShowsItsKey(t *testing.T) {
 		t.Fatal("the secret key appears in output or logs")
 	}
 }
+
+func TestInitializeAndVerifyTransaction(t *testing.T) {
+	ctx := context.Background()
+	f, c := newFake(t,
+		reply{200, `{"status":true,"message":"Authorization URL created","data":{"authorization_url":"https://checkout.paystack.com/0peioxfhpn","access_code":"0peioxfhpn","reference":"` + ref + `"}}`, 0},
+		reply{200, `{"status":true,"message":"Verification successful","data":{"id":4099260516,"status":"success","reference":"` + ref + `","amount":13112100,"currency":"NGN","paid_at":"2026-10-16T14:00:00.000Z"}}`, 0},
+		reply{400, `{"status":false,"message":"Transaction reference not found"}`, 0},
+		reply{502, ``, 0},
+	)
+	u, err := c.InitializeTransaction(ctx, paystack.Charge{Reference: ref, Amount: money.FromInt64(13112100), Email: "pay-wb@example.com", CallbackURL: "http://localhost:3000/t/WB"})
+	if err != nil || u != "https://checkout.paystack.com/0peioxfhpn" {
+		t.Fatalf("initialize: %q, %v", u, err)
+	}
+	b := f.got[0].body
+	if raw, _ := json.Marshal(b["amount"]); f.got[0].path != "/transaction/initialize" || string(raw) != "13112100" || b["currency"] != "NGN" || b["reference"] != ref {
+		t.Fatalf("initialize request %+v", f.got[0])
+	}
+	st, err := c.VerifyTransaction(ctx, ref)
+	if err != nil || st.Status != "success" || st.Amount.String() != "13112100" || st.Currency != "NGN" || st.ID != "4099260516" {
+		t.Fatalf("verify: %+v, %v", st, err)
+	}
+	if _, err := c.VerifyTransaction(ctx, ref); !errors.Is(err, paystack.ErrNotFound) {
+		t.Fatalf("unknown reference: %v, want ErrNotFound", err)
+	}
+	if _, err := c.VerifyTransaction(ctx, ref); !errors.Is(err, paystack.ErrUnknown) {
+		t.Fatalf("502: %v, want ErrUnknown", err)
+	}
+}

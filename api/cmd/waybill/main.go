@@ -120,6 +120,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Banks:    nr.banks,
 			Resolver: nr.resolver,
 			Paystack: nr.paystack,
+			Checkout: nr.checkout(pool, tokens, cfg.WebURL, log),
 			Tokens:   tokens,
 			WebURL:   cfg.WebURL,
 

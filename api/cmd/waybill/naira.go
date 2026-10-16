@@ -6,12 +6,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/checkout"
 	"github.com/JoshBlazer/waybill/api/internal/config"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/money"
 	"github.com/JoshBlazer/waybill/api/internal/paystack"
 	"github.com/JoshBlazer/waybill/api/internal/rates"
+	"github.com/JoshBlazer/waybill/api/internal/safety"
 )
 
 // fakeRate is the local rate when WAYBILL_RATES=fake: ₦1,550.00 per USDC.
@@ -27,6 +31,11 @@ type naira struct {
 	banks    bankverify.BankLister
 	resolver bankverify.Resolver
 	paystack *paystack.Client // nil without a key
+	charger  checkout.Charger // nil without a key: card pay-in is off
+}
+
+func (n naira) checkout(pool *pgxpool.Pool, tokens map[safety.Network]string, webURL string, log *slog.Logger) *checkout.Service {
+	return &checkout.Service{Pool: pool, Charger: n.charger, Tokens: tokens, WebURL: webURL, Log: log}
 }
 
 func setupNaira(cfg config.Config, log *slog.Logger) (naira, error) {
@@ -52,7 +61,7 @@ func setupNaira(cfg config.Config, log *slog.Logger) (naira, error) {
 	if err != nil {
 		return naira{}, err
 	}
-	n.banks, n.resolver, n.paystack = c, c, c
+	n.banks, n.resolver, n.paystack, n.charger = c, c, c, c
 	log.Info("naira: Paystack test mode", "client", c, "rates", cfg.Rates)
 	return n, nil
 }
