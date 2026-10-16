@@ -17,8 +17,8 @@ description = "Public EVM addresses"
 regexTarget = "secret"
 regexes = ['''^0x[0-9a-fA-F]{40}$''']
 
-# The Paystack client tests use a made-up key with the test-key prefix.
+# The Paystack client and API tests use a made-up key with the test-key prefix.
 [[allowlists]]
-description = "Fake Paystack test key in client unit tests"
-paths = ['''^api/internal/paystack/paystack_test\.go$''']
+description = "Fake Paystack test key in unit tests"
+paths = ['''^api/internal/paystack/paystack_test\.go$''', '''^api/internal/httpapi/invoices_test\.go$''']
 regexes = ['''sk_test_waybill_fake_key_for_unit_tests_only''', '''sk_test_someone_else''']

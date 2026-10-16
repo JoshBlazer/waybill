@@ -88,6 +88,9 @@ services:
       # Opt in (=1) to deliver webhooks to http and private hosts on this
       # Anvil-only stack. Refused by the services on any other network.
       WAYBILL_WEBHOOK_ALLOW_PRIVATE: ${WAYBILL_WEBHOOK_ALLOW_PRIVATE:-}
+      # Naira rates (ADR-039): exchangerate-api reads the daily USD/NGN rate;
+      # fake uses a fixed ₦1,550 per USDC.
+      WAYBILL_RATES: ${WAYBILL_RATES:-exchangerate-api}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: "no"

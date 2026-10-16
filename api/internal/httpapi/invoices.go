@@ -89,9 +89,13 @@ func (s *Server) CreateInvoice(ctx context.Context, req CreateInvoiceRequestObje
 	case errors.Is(err, invoice.ErrInvalidAmount), errors.Is(err, invoice.ErrInvalidDescription),
 		errors.Is(err, invoice.ErrInvalidPayout), errors.Is(err, invoice.ErrUnsupportedAsset):
 		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "validation", "The invoice is not valid.", err.Error())), nil
-	case errors.Is(err, invoice.ErrPayoutUnavailable):
-		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "payout-unavailable",
-			"Naira payouts are not available yet.", "Choose \"hold\" to keep the stablecoin in your balance.")), nil
+	case errors.Is(err, invoice.ErrNoBankAccount):
+		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "no-bank-account",
+			"Add a verified bank account before asking for naira.", "PUT /v1/me/bank-account, or choose \"hold\".")), nil
+	case errors.Is(err, invoice.ErrRateUnavailable):
+		s.logger().WarnContext(ctx, "create invoice: no naira rate", "err", err)
+		return CreateInvoice503ApplicationProblemPlusJSONResponse(problem(503, "rate-unavailable",
+			"We can't get a naira rate right now, so no invoice was created.", "Try again in a few minutes, or choose \"hold\".")), nil
 	case err != nil:
 		return nil, err
 	}
@@ -165,6 +169,7 @@ func InvoiceJSON(webURL string, inv invoice.Invoice) Invoice {
 		DepositAddresses: depositJSON(inv),
 		ExpiresAt:        inv.ExpiresAt.UTC(),
 		CreatedAt:        inv.CreatedAt.UTC(),
+		Quote:            quoteJSON(inv),
 	}
 }
 

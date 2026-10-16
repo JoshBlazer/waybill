@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -28,6 +28,10 @@ tags:
     description: The contractor's own API keys.
   - name: webhooks
     description: Signed event notifications to the contractor's servers.
+  - name: payouts
+    description: The contractor's bank account and naira payouts.
+  - name: providers
+    description: Callbacks from payment providers. Not for clients.
 paths:
   /v1/health:
     get:
@@ -85,6 +89,8 @@ paths:
         "409":
           $ref: "#/components/responses/Problem"
         "422":
+          $ref: "#/components/responses/Problem"
+        "503":
           $ref: "#/components/responses/Problem"
 
   /v1/pay/{code}:
@@ -341,6 +347,189 @@ paths:
         "404":
           $ref: "#/components/responses/Problem"
 
+  /v1/banks:
+    get:
+      operationId: listBanks
+      tags: [payouts]
+      summary: Nigerian banks that can receive payouts.
+      description: Codes to use in `PUT /v1/me/bank-account`. Cached from the provider for a day.
+      security:
+        - contractorKey: []
+      responses:
+        "200":
+          description: The banks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+
+  /v1/me/bank-account:
+    get:
+      operationId: getBankAccount
+      tags: [payouts]
+      summary: The contractor's payout bank account.
+      security:
+        - contractorKey: []
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankAccount"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setBankAccount
+      tags: [payouts]
+      summary: Set or change the payout bank account.
+      description: |
+        Waybill asks the bank for the account's name and saves the account
+        only if it matches the contractor's legal name (every part of the
+        legal name present, in any order). A mismatch is a 422 showing the
+        name the bank holds. If the bank cannot be reached the account is
+        not saved and the answer is 503: "could not verify" is never
+        "verified".
+
+        Payouts to a changed account wait 24 hours (`payoutsAllowedFrom`),
+        so a stolen API key cannot redirect money at once.
+      security:
+        - contractorKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetBankAccountRequest"
+      responses:
+        "200":
+          description: Verified and saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankAccount"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+
+  /v1/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: One of the contractor's invoices, with its quote and payout.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/invoices/{id}/accept-shortfall:
+    post:
+      operationId: acceptShortfall
+      tags: [invoices]
+      summary: Accept an underpaid invoice as paid.
+      description: |
+        Moves an `underpaid` invoice to `confirmed` (the underpaid amount
+        settles as is). Only the invoice's contractor can do this. Repeating
+        it on an invoice that is already past `underpaid` is a 409.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/pay/{code}/checkout:
+    post:
+      operationId: startCheckout
+      tags: [public]
+      summary: Pay a link in naira by card or bank transfer.
+      description: |
+        Starts a Paystack test-mode checkout for the invoice's amount at its
+        locked rate and returns the page to send the payer to. Repeating it
+        for the same link returns the same checkout while it is open.
+        Available only for invoices with a naira quote that has not
+        expired.
+      parameters:
+        - $ref: "#/components/parameters/TrackingCode"
+      responses:
+        "200":
+          description: The checkout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkout"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+
+  /v1/providers/paystack/webhook:
+    post:
+      operationId: paystackWebhook
+      tags: [providers]
+      summary: Paystack event callback.
+      description: |
+        Paystack posts transfer and charge events here. The handler checks
+        `x-paystack-signature` (HMAC-SHA512 of the raw body with the secret
+        key) before reading anything, stores the raw body, and processes
+        each event id once (I14). It answers 200 as soon as the event is
+        stored; the work happens in the worker. A bad signature is a 401
+        and nothing is stored.
+      parameters:
+        - name: x-paystack-signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Stored (or already stored).
+        "401":
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     contractorKey:
@@ -451,8 +640,10 @@ components:
           enum: [naira, hold]
           description: |
             `hold` keeps the stablecoin in the contractor's balance. `naira`
-            converts and sends to the bank, and is accepted from stage 3; until
-            then it returns 422.
+            locks a rate now (see `Quote`) and sends naira to the verified bank
+            account once the invoice settles. `naira` needs a verified bank
+            account and an available rate: without either it is a 422 or a
+            503, and the invoice is not created.
 
     InvoiceState:
       type: string
@@ -511,6 +702,16 @@ components:
         createdAt:
           type: string
           format: date-time
+        quote:
+          allOf:
+            - $ref: "#/components/schemas/Quote"
+          nullable: true
+          description: Present when payout is `naira`.
+        payoutStatus:
+          allOf:
+            - $ref: "#/components/schemas/Payout"
+          nullable: true
+          description: The naira payout, present once a naira invoice has settled.
 
     PaymentLink:
       type: object
@@ -818,6 +1019,138 @@ components:
           properties:
             invoice:
               $ref: "#/components/schemas/Invoice"
+
+    Bank:
+      type: object
+      additionalProperties: false
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9]{3,6}$"
+          example: "058"
+        name:
+          type: string
+          example: Guaranty Trust Bank
+
+    BankList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Bank"
+
+    SetBankAccountRequest:
+      type: object
+      additionalProperties: false
+      required: [bankCode, accountNumber]
+      properties:
+        bankCode:
+          type: string
+          pattern: "^[0-9]{3,6}$"
+        accountNumber:
+          type: string
+          pattern: "^[0-9]{10}$"
+          description: A 10-digit NUBAN.
+
+    BankAccount:
+      type: object
+      additionalProperties: false
+      required: [bankCode, bankName, accountNumberLast4, accountName, verifiedAt, payoutsAllowedFrom]
+      properties:
+        bankCode:
+          type: string
+        bankName:
+          type: string
+        accountNumberLast4:
+          type: string
+          pattern: "^[0-9]{4}$"
+          description: Only the last four digits are ever shown again.
+        accountName:
+          type: string
+          description: The name the bank holds, which matched the legal name.
+        verifiedAt:
+          type: string
+          format: date-time
+        payoutsAllowedFrom:
+          type: string
+          format: date-time
+          description: 24 hours after the account was last changed.
+
+    Quote:
+      type: object
+      additionalProperties: false
+      required: [rate, nairaAmount, spreadBps, source, quotedAt, expiresAt]
+      description: |
+        The naira the contractor receives for this invoice, locked when the
+        invoice was created. `rate` is naira per 1 USDC as an exact Amount
+        (kobo, scale 2). A late payment is re-quoted.
+      properties:
+        rate:
+          $ref: "#/components/schemas/Amount"
+        nairaAmount:
+          $ref: "#/components/schemas/Amount"
+        spreadBps:
+          type: integer
+          minimum: 0
+          maximum: 9999
+          description: Waybill's margin in basis points, already taken out of `rate`.
+        source:
+          type: string
+          example: ExchangeRate-API
+        quotedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    PayoutState:
+      type: string
+      enum: [queued, converted, held, submitting, submitted, unknown, succeeded, failed, reversed, cancelled]
+      description: |
+        `unknown` means the provider did not answer and Waybill is checking
+        with it by reference; it is never shown as failed.
+
+    Payout:
+      type: object
+      additionalProperties: false
+      required: [state, nairaAmount, updatedAt]
+      properties:
+        state:
+          $ref: "#/components/schemas/PayoutState"
+        nairaAmount:
+          $ref: "#/components/schemas/Amount"
+        bankName:
+          type: string
+        accountNumberLast4:
+          type: string
+        failureReason:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, reference, amount, expiresAt]
+      properties:
+        authorizationUrl:
+          type: string
+          format: uri
+          description: Paystack's test checkout page.
+        reference:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        expiresAt:
+          type: string
+          format: date-time
 
     Problem:
       type: object
