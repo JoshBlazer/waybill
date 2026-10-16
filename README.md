@@ -17,6 +17,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Test-money guard: chain allowlist, live chain-ID check, Paystack test-key check | Done | `make test-api` → `api/internal/safety` |
 | OpenAPI contract (`GET /v1/health`), generated Go and TypeScript types, drift check | Done | `make check-gen` |
 | Database migrations (goose; schema empty) against real PostgreSQL | Done | `make test-api` → `TestMigrate_AgainstRealPostgres` |
+| **Stage 1 — Thin slice** (exit check passed 2026-10-16) | Done | [walkthrough](docs/walkthroughs/stage-1.md) |
 | Contracts: mock stablecoin, CREATE2 deposit forwarders and factory, vault with limits and pause | Done (stage 1) | `make test-contracts` (25 tests, fuzzed) |
 | Local stack: PostgreSQL, Anvil, API, web | Done | `make up` |
 | CI on every push | Done | [Actions](../../actions) |
@@ -26,7 +27,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Thin slice: invoice → pay on Anvil → watcher → ledger → live tracking page | Done on Anvil (stage 1) | `make up && make e2e` (3 tests: live tracking, settlement to final, browser wallet) |
 | Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
 | Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Done (stage 1); budgets set from CI measurement (ADR-036) | `make lighthouse` |
-| Base Sepolia deployment | Contracts deployed (stage 1); paying an invoice there is not done yet | [Testnet deployments](#testnet-deployments) |
+| Base Sepolia: contracts deployed, one invoice paid and settled | Done (stage 1) | [Testnet deployments](#testnet-deployments) |
 | Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
@@ -45,6 +46,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | DepositForwarder (implementation) | [`0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C`](https://sepolia.basescan.org/address/0xe95bB222F1333FDca26A4D0947C5AeBe4446F61C) |
 
 MockStablecoin deployment transaction: [`0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70`](https://sepolia.basescan.org/tx/0xfa17f799f469f95a6e8fffbf2940d34abdc6deb81ba6dfb8585e531ef5932b70) (block 48167483). All seven deployment transactions succeeded.
+
+**One invoice paid on Base Sepolia**, 2026-10-16: a 25.00 USDC invoice, paid with 25 mUSDC to its deposit address in transaction [`0x42925b1a794017d171ea879f287c292db277bc3c7bc13381614eab86af38af69`](https://sepolia.basescan.org/tx/0x42925b1a794017d171ea879f287c292db277bc3c7bc13381614eab86af38af69) (block 48176412). The watcher, pointed at `https://sepolia.base.org`, detected it 36 seconds after the invoice was created, confirmed it four seconds later, and made it final about 15 minutes later, once Base Sepolia's `finalized` block passed it. It posted `deposit.confirmed` and `deposit.final`, and the invoice ended `settled`.
 
 The deployer key is a throwaway test key kept outside the repository. It was funded from the Sepolia proof-of-work faucet and bridged to Base Sepolia through Base's L1StandardBridge.
 

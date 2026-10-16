@@ -37,9 +37,11 @@ Build the whole path end to end before deepening any part of it.
 - [x] JavaScript budget check in CI (`make budget`, ADR-033).
 - [x] Lighthouse CI and axe checks in CI, with the budgets from DESIGN.md (ADR-035). Budgets revised from measurement (ADR-036).
 - [x] Deploy the contracts to Base Sepolia and record the addresses and a transaction hash in the README.
-- [ ] Pay one invoice on Base Sepolia. Blocked: on a network with no cursor yet, the watcher scans from block 0, which suits Anvil but means about 48 million blocks on Base Sepolia. It needs a start block first.
+- [x] Pay one invoice on Base Sepolia. Needed a start block for the watcher (the deployments file records it) and 200-block log queries on public RPCs.
 
 **Exit check:** `make e2e` proves the whole path on Anvil, and the README records Base Sepolia contract addresses and one transaction hash.
+
+**Result (2026-10-16): passed.** `make e2e` on `a9a96f9`: 4 passed. The README records the four Base Sepolia contract addresses, the deployment transaction and the payment transaction of an invoice that settled there. See [walkthroughs/stage-1.md](walkthroughs/stage-1.md).
 
 ## Stage 2 — Hardening
 
