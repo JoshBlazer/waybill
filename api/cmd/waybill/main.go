@@ -48,7 +48,7 @@ func main() {
 	case "api":
 		err = runAPI(ctx, log)
 	case "worker":
-		err = runIdle(ctx, log, cmd)
+		err = runWorker(ctx, log)
 	case "watcher":
 		err = runWatcher(ctx, log)
 	case "seed-dev":
@@ -140,17 +140,6 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	return nil
-}
-
-// runIdle runs the guard and then waits for a signal. The worker has no jobs
-// yet (sweeps and payouts arrive in stage 2); it exists so the guard covers it.
-func runIdle(ctx context.Context, log *slog.Logger, role string) error {
-	if _, err := guard(ctx, log); err != nil {
-		return err
-	}
-	log.Info(role + " has no jobs yet; idling until stopped")
-	<-ctx.Done()
 	return nil
 }
 
