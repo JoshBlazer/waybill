@@ -53,6 +53,18 @@ type Contractor struct {
 	CreatedAt  time.Time
 }
 
+type ContractorBankAccount struct {
+	ContractorID       uuid.UUID
+	BankCode           string
+	BankName           string
+	AccountNumber      string
+	AccountName        string
+	VerifiedAt         time.Time
+	PayoutsAllowedFrom time.Time
+	RecipientCode      *string
+	UpdatedAt          time.Time
+}
+
 type DepositAddress struct {
 	Network   string
 	Address   string
@@ -82,6 +94,7 @@ type Invoice struct {
 	ExpiresAt    time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	RateQuoteID  *uuid.UUID
 }
 
 type InvoiceEvent struct {
@@ -190,6 +203,29 @@ type Posting struct {
 	AccountID int64
 	AssetCode string
 	Amount    money.Amount
+}
+
+type ProviderEvent struct {
+	ID          int64
+	Provider    string
+	EventID     string
+	EventType   string
+	Raw         []byte
+	ReceivedAt  time.Time
+	ProcessedAt *time.Time
+}
+
+type RateQuote struct {
+	ID         uuid.UUID
+	FromAsset  string
+	ToAsset    string
+	Mid        money.Amount
+	Rate       money.Amount
+	SpreadBps  int32
+	Source     string
+	ObservedAt time.Time
+	QuotedAt   time.Time
+	ExpiresAt  time.Time
 }
 
 type SignerNonce struct {

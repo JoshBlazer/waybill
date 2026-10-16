@@ -104,6 +104,10 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 		deps[n] = c.deployment
 		tokens[n] = evm.NormalizeAddress(c.deployment.Token)
 	}
+	nr, err := setupNaira(cfg, log)
+	if err != nil {
+		return err
+	}
 	broker := httpapi.NewBroker(pool, log)
 	go broker.Run(ctx)
 
@@ -112,7 +116,10 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 		Handler: httpapi.NewHandler(&httpapi.Server{
 			DB:       store.New(pool),
 			Pool:     pool,
-			Invoices: &invoice.Service{Deployments: deps, Now: time.Now},
+			Invoices: &invoice.Service{Deployments: deps, Now: time.Now, Quoter: nr.quoter},
+			Banks:    nr.banks,
+			Resolver: nr.resolver,
+			Paystack: nr.paystack,
 			Tokens:   tokens,
 			WebURL:   cfg.WebURL,
 

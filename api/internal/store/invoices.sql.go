@@ -160,7 +160,7 @@ func (q *Queries) GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRe
 }
 
 const getInvoiceByTrackingCode = `-- name: GetInvoiceByTrackingCode :one
-SELECT i.id, i.contractor_id, i.tracking_code, i.description, i.asset_code, i.amount, i.payout_mode, i.state, i.expires_at, i.created_at, i.updated_at, c.legal_name AS contractor_name, c.verified_at AS contractor_verified_at
+SELECT i.id, i.contractor_id, i.tracking_code, i.description, i.asset_code, i.amount, i.payout_mode, i.state, i.expires_at, i.created_at, i.updated_at, i.rate_quote_id, c.legal_name AS contractor_name, c.verified_at AS contractor_verified_at
 FROM invoices i JOIN contractors c ON c.id = i.contractor_id
 WHERE i.tracking_code = $1
 `
@@ -177,6 +177,7 @@ type GetInvoiceByTrackingCodeRow struct {
 	ExpiresAt            time.Time
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	RateQuoteID          *uuid.UUID
 	ContractorName       string
 	ContractorVerifiedAt *time.Time
 }
@@ -196,6 +197,7 @@ func (q *Queries) GetInvoiceByTrackingCode(ctx context.Context, trackingCode str
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RateQuoteID,
 		&i.ContractorName,
 		&i.ContractorVerifiedAt,
 	)
@@ -203,7 +205,7 @@ func (q *Queries) GetInvoiceByTrackingCode(ctx context.Context, trackingCode str
 }
 
 const getInvoiceForUpdate = `-- name: GetInvoiceForUpdate :one
-SELECT id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, state, expires_at, created_at, updated_at FROM invoices WHERE id = $1 FOR UPDATE
+SELECT id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, state, expires_at, created_at, updated_at, rate_quote_id FROM invoices WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoice, error) {
@@ -221,6 +223,7 @@ func (q *Queries) GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoic
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RateQuoteID,
 	)
 	return i, err
 }
@@ -277,9 +280,9 @@ func (q *Queries) InsertDepositAddress(ctx context.Context, arg InsertDepositAdd
 
 const insertInvoice = `-- name: InsertInvoice :one
 
-INSERT INTO invoices (id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, state, expires_at, created_at, updated_at
+INSERT INTO invoices (id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, expires_at, rate_quote_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, contractor_id, tracking_code, description, asset_code, amount, payout_mode, state, expires_at, created_at, updated_at, rate_quote_id
 `
 
 type InsertInvoiceParams struct {
@@ -291,6 +294,7 @@ type InsertInvoiceParams struct {
 	Amount       money.Amount
 	PayoutMode   string
 	ExpiresAt    time.Time
+	RateQuoteID  *uuid.UUID
 }
 
 // Invoices ----------------------------------------------------------------
@@ -304,6 +308,7 @@ func (q *Queries) InsertInvoice(ctx context.Context, arg InsertInvoiceParams) (I
 		arg.Amount,
 		arg.PayoutMode,
 		arg.ExpiresAt,
+		arg.RateQuoteID,
 	)
 	var i Invoice
 	err := row.Scan(
@@ -318,6 +323,7 @@ func (q *Queries) InsertInvoice(ctx context.Context, arg InsertInvoiceParams) (I
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RateQuoteID,
 	)
 	return i, err
 }

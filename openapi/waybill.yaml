@@ -90,6 +90,8 @@ paths:
           $ref: "#/components/responses/Problem"
         "422":
           $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
 
   /v1/pay/{code}:
     get:

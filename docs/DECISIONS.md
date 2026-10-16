@@ -244,7 +244,7 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - `WAYBILL_WEBHOOK_ALLOW_PRIVATE=1` allows http and private hosts for local testing, and config refuses it unless every chain is Anvil.
 
 ## ADR-039 Rate provider: ExchangeRate-API's open endpoint
-**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only the `rates.Fake` provider exists.
+**Status:** Accepted, 2026-10-16 (owner chose it over CoinGecko and fake-only).
 **Context:** A naira invoice locks a USDC→NGN rate when it is created (PRODUCT §4.1). `rates.Provider` returns a mid rate; `rates.Quoter` applies a spread and an expiry and refuses rates that are too old. Waybill runs on test money, so the rate needs to be realistic, not tradable. Paystack, already the payout provider, publishes no exchange rates.
 **Options considered:**
 - **ExchangeRate-API open endpoint** (`GET https://open.er-api.com/v6/latest/USD`). No key and no signup. Updated once a day; rate limited; attribution required; the data may be cached but not redistributed.
@@ -254,13 +254,13 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 **Consequences:** One outbound HTTPS dependency, read-only and without a secret. A daily mid rate is not a market quote, which is acceptable for test money and stated on the page. Treating USDC as exactly 1 USD ignores small depegs; recorded in RISKS.md. If the endpoint is down, no naira quote is made and invoices can still be created with payout *hold* (I12).
 
 ## ADR-040 Bank-name verification: Paystack Resolve Account Number
-**Status:** Proposed, 2026-10-16. Awaiting owner approval; until then only `bankverify.Fake` exists.
+**Status:** Accepted, 2026-10-16.
 **Context:** A contractor's bank account must belong to them before Waybill pays into it (RISKS §2). `bankverify.Resolver` asks for the account name; `bankverify.NameMatches` compares it with the legal name (every legal name part must appear, in any order; no fuzzy matching).
 **Decision (proposed):** Use Paystack's `GET /bank/resolve` through the same test-mode key as payouts (`paystack.Client` already implements `bankverify.Resolver`). No new vendor and no new secret.
 **Consequences:** Test-mode resolution returns test data, not real bank records, which is what a test-money project wants. A dedicated identity provider (BVN/NIN checks) is out of scope; recorded as a known gap in RISKS.md for any move to live money. A failed lookup is "could not verify", never "verified" (I12).
 
 ## ADR-041 Stage 3 public API: bank accounts, quotes, payouts, checkout, Paystack callback
-**Status:** Proposed, 2026-10-16. Awaiting owner approval of the OpenAPI changes; no implementation yet.
+**Status:** Accepted, 2026-10-16 (owner approved the endpoints and the four choices in PR #17). `createInvoice` also gains a 503 for "no rate".
 **Context:** Stage 3 pays contractors in naira. Contractors need to register a verified bank account, see the rate locked on a naira invoice, follow the payout and accept an underpayment. Payers need to pay by card or bank transfer. Paystack needs somewhere to send its events.
 **Decision (proposed):** OpenAPI 0.4.0 adds seven operations:
 - Contractor-authenticated: `GET /v1/banks`, `GET` and `PUT /v1/me/bank-account`, `GET /v1/invoices/{id}`, `POST /v1/invoices/{id}/accept-shortfall`.

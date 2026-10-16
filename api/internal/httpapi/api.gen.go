@@ -142,6 +142,48 @@ func (e InvoiceState) Valid() bool {
 	}
 }
 
+// Defines values for PayoutState.
+const (
+	PayoutStateCancelled  PayoutState = "cancelled"
+	PayoutStateConverted  PayoutState = "converted"
+	PayoutStateFailed     PayoutState = "failed"
+	PayoutStateHeld       PayoutState = "held"
+	PayoutStateQueued     PayoutState = "queued"
+	PayoutStateReversed   PayoutState = "reversed"
+	PayoutStateSubmitted  PayoutState = "submitted"
+	PayoutStateSubmitting PayoutState = "submitting"
+	PayoutStateSucceeded  PayoutState = "succeeded"
+	PayoutStateUnknown    PayoutState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the PayoutState enum.
+func (e PayoutState) Valid() bool {
+	switch e {
+	case PayoutStateCancelled:
+		return true
+	case PayoutStateConverted:
+		return true
+	case PayoutStateFailed:
+		return true
+	case PayoutStateHeld:
+		return true
+	case PayoutStateQueued:
+		return true
+	case PayoutStateReversed:
+		return true
+	case PayoutStateSubmitted:
+		return true
+	case PayoutStateSubmitting:
+		return true
+	case PayoutStateSucceeded:
+		return true
+	case PayoutStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TrackingStepStatus.
 const (
 	Checking TrackingStepStatus = "checking"
@@ -195,19 +237,19 @@ func (e TrackingStepStep) Valid() bool {
 
 // Defines values for WebhookDeliveryOutcome.
 const (
-	Failed    WebhookDeliveryOutcome = "failed"
-	Refused   WebhookDeliveryOutcome = "refused"
-	Succeeded WebhookDeliveryOutcome = "succeeded"
+	WebhookDeliveryOutcomeFailed    WebhookDeliveryOutcome = "failed"
+	WebhookDeliveryOutcomeRefused   WebhookDeliveryOutcome = "refused"
+	WebhookDeliveryOutcomeSucceeded WebhookDeliveryOutcome = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WebhookDeliveryOutcome enum.
 func (e WebhookDeliveryOutcome) Valid() bool {
 	switch e {
-	case Failed:
+	case WebhookDeliveryOutcomeFailed:
 		return true
-	case Refused:
+	case WebhookDeliveryOutcomeRefused:
 		return true
-	case Succeeded:
+	case WebhookDeliveryOutcomeSucceeded:
 		return true
 	default:
 		return false
@@ -280,6 +322,46 @@ type ApiKeyList struct {
 	Items []ApiKey `json:"items"`
 }
 
+// Bank defines model for Bank.
+type Bank struct {
+	// Code Example: 058
+	Code string `json:"code"`
+
+	// Name Example: Guaranty Trust Bank
+	Name string `json:"name"`
+}
+
+// BankAccount defines model for BankAccount.
+type BankAccount struct {
+	// AccountName The name the bank holds, which matched the legal name.
+	AccountName string `json:"accountName"`
+
+	// AccountNumberLast4 Only the last four digits are ever shown again.
+	AccountNumberLast4 string `json:"accountNumberLast4"`
+	BankCode           string `json:"bankCode"`
+	BankName           string `json:"bankName"`
+
+	// PayoutsAllowedFrom 24 hours after the account was last changed.
+	PayoutsAllowedFrom time.Time `json:"payoutsAllowedFrom"`
+	VerifiedAt         time.Time `json:"verifiedAt"`
+}
+
+// BankList defines model for BankList.
+type BankList struct {
+	Items []Bank `json:"items"`
+}
+
+// Checkout defines model for Checkout.
+type Checkout struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount Amount `json:"amount"`
+
+	// AuthorizationUrl Paystack's test checkout page.
+	AuthorizationUrl string    `json:"authorizationUrl"`
+	ExpiresAt        time.Time `json:"expiresAt"`
+	Reference        string    `json:"reference"`
+}
+
 // CreateApiKeyRequest defines model for CreateApiKeyRequest.
 type CreateApiKeyRequest struct {
 	// Name A label to tell keys apart, e.g. where the key is used.
@@ -300,8 +382,10 @@ type CreateInvoiceRequest struct {
 	Description string `json:"description"`
 
 	// Payout `hold` keeps the stablecoin in the contractor's balance. `naira`
-	// converts and sends to the bank, and is accepted from stage 3; until
-	// then it returns 422.
+	// locks a rate now (see `Quote`) and sends naira to the verified bank
+	// account once the invoice settles. `naira` needs a verified bank
+	// account and an available rate: without either it is a 422 or a
+	// 503, and the invoice is not created.
 	Payout CreateInvoiceRequestPayout `json:"payout"`
 }
 
@@ -309,8 +393,10 @@ type CreateInvoiceRequest struct {
 type CreateInvoiceRequestAsset string
 
 // CreateInvoiceRequestPayout `hold` keeps the stablecoin in the contractor's balance. `naira`
-// converts and sends to the bank, and is accepted from stage 3; until
-// then it returns 422.
+// locks a rate now (see `Quote`) and sends naira to the verified bank
+// account once the invoice settles. `naira` needs a verified bank
+// account and an available rate: without either it is a 422 or a
+// 503, and the invoice is not created.
 type CreateInvoiceRequestPayout string
 
 // CreateWebhookEndpointRequest defines model for CreateWebhookEndpointRequest.
@@ -400,8 +486,14 @@ type Invoice struct {
 	Id               openapi_types.UUID `json:"id"`
 	PayUrl           string             `json:"payUrl"`
 	Payout           InvoicePayout      `json:"payout"`
-	State            InvoiceState       `json:"state"`
-	TrackUrl         string             `json:"trackUrl"`
+
+	// PayoutStatus The naira payout, present once a naira invoice has settled.
+	PayoutStatus *Payout `json:"payoutStatus,omitempty"`
+
+	// Quote Present when payout is `naira`.
+	Quote    *Quote       `json:"quote,omitempty"`
+	State    InvoiceState `json:"state"`
+	TrackUrl string       `json:"trackUrl"`
 
 	// TrackingCode Example: WB-7KQ4-M2XD-9PRA-3HNC
 	TrackingCode string `json:"trackingCode"`
@@ -430,6 +522,25 @@ type PaymentLink struct {
 	Verified bool `json:"verified"`
 }
 
+// Payout defines model for Payout.
+type Payout struct {
+	AccountNumberLast4 *string `json:"accountNumberLast4,omitempty"`
+	BankName           *string `json:"bankName,omitempty"`
+	FailureReason      *string `json:"failureReason,omitempty"`
+
+	// NairaAmount An exact amount. `minor` / 10^`scale` is the value in major units.
+	NairaAmount Amount `json:"nairaAmount"`
+
+	// State `unknown` means the provider did not answer and Waybill is checking
+	// with it by reference; it is never shown as failed.
+	State     PayoutState `json:"state"`
+	UpdatedAt time.Time   `json:"updatedAt"`
+}
+
+// PayoutState `unknown` means the provider did not answer and Waybill is checking
+// with it by reference; it is never shown as failed.
+type PayoutState string
+
 // Problem defines model for Problem.
 type Problem struct {
 	Detail   *string `json:"detail,omitempty"`
@@ -441,6 +552,33 @@ type Problem struct {
 	//
 	// Example: https://waybill.dev/problems/validation
 	Type string `json:"type"`
+}
+
+// Quote The naira the contractor receives for this invoice, locked when the
+// invoice was created. `rate` is naira per 1 USDC as an exact Amount
+// (kobo, scale 2). A late payment is re-quoted.
+type Quote struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// NairaAmount An exact amount. `minor` / 10^`scale` is the value in major units.
+	NairaAmount Amount    `json:"nairaAmount"`
+	QuotedAt    time.Time `json:"quotedAt"`
+
+	// Rate An exact amount. `minor` / 10^`scale` is the value in major units.
+	Rate Amount `json:"rate"`
+
+	// Source Example: ExchangeRate-API
+	Source string `json:"source"`
+
+	// SpreadBps Waybill's margin in basis points, already taken out of `rate`.
+	SpreadBps int `json:"spreadBps"`
+}
+
+// SetBankAccountRequest defines model for SetBankAccountRequest.
+type SetBankAccountRequest struct {
+	// AccountNumber A 10-digit NUBAN.
+	AccountNumber string `json:"accountNumber"`
+	BankCode      string `json:"bankCode"`
 }
 
 // Tracking defines model for Tracking.
@@ -557,6 +695,20 @@ type CreateInvoiceParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// AcceptShortfallParams defines parameters for AcceptShortfall.
+type AcceptShortfallParams struct {
+	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// PaystackWebhookJSONBody defines parameters for PaystackWebhook.
+type PaystackWebhookJSONBody map[string]interface{}
+
+// PaystackWebhookParams defines parameters for PaystackWebhook.
+type PaystackWebhookParams struct {
+	XPaystackSignature string `json:"x-paystack-signature"`
+}
+
 // StreamTrackingParams defines parameters for StreamTracking.
 type StreamTrackingParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
@@ -581,6 +733,12 @@ type CreateApiKeyJSONRequestBody = CreateApiKeyRequest
 // CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
 type CreateInvoiceJSONRequestBody = CreateInvoiceRequest
 
+// SetBankAccountJSONRequestBody defines body for SetBankAccount for application/json ContentType.
+type SetBankAccountJSONRequestBody = SetBankAccountRequest
+
+// PaystackWebhookJSONRequestBody defines body for PaystackWebhook for application/json ContentType.
+type PaystackWebhookJSONRequestBody PaystackWebhookJSONBody
+
 // CreateWebhookEndpointJSONRequestBody defines body for CreateWebhookEndpoint for application/json ContentType.
 type CreateWebhookEndpointJSONRequestBody = CreateWebhookEndpointRequest
 
@@ -595,15 +753,36 @@ type ServerInterface interface {
 	// RevokeApiKey Revoke an API key.
 	// (DELETE /v1/api-keys/{id})
 	RevokeApiKey(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// ListBanks Nigerian banks that can receive payouts.
+	// (GET /v1/banks)
+	ListBanks(w http.ResponseWriter, r *http.Request)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 	// CreateInvoice Create an invoice and its payment link.
 	// (POST /v1/invoices)
 	CreateInvoice(w http.ResponseWriter, r *http.Request, params CreateInvoiceParams)
+	// GetInvoice One of the contractor's invoices, with its quote and payout.
+	// (GET /v1/invoices/{id})
+	GetInvoice(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// AcceptShortfall Accept an underpaid invoice as paid.
+	// (POST /v1/invoices/{id}/accept-shortfall)
+	AcceptShortfall(w http.ResponseWriter, r *http.Request, id ResourceId, params AcceptShortfallParams)
+	// GetBankAccount The contractor's payout bank account.
+	// (GET /v1/me/bank-account)
+	GetBankAccount(w http.ResponseWriter, r *http.Request)
+	// SetBankAccount Set or change the payout bank account.
+	// (PUT /v1/me/bank-account)
+	SetBankAccount(w http.ResponseWriter, r *http.Request)
 	// GetPayment What a payer sees when opening a payment link.
 	// (GET /v1/pay/{code})
 	GetPayment(w http.ResponseWriter, r *http.Request, code TrackingCode)
+	// StartCheckout Pay a link in naira by card or bank transfer.
+	// (POST /v1/pay/{code}/checkout)
+	StartCheckout(w http.ResponseWriter, r *http.Request, code TrackingCode)
+	// PaystackWebhook Paystack event callback.
+	// (POST /v1/providers/paystack/webhook)
+	PaystackWebhook(w http.ResponseWriter, r *http.Request, params PaystackWebhookParams)
 	// GetTracking The four-step tracking view of a payment.
 	// (GET /v1/track/{code})
 	GetTracking(w http.ResponseWriter, r *http.Request, code TrackingCode)
@@ -718,6 +897,20 @@ func (siw *ServerInterfaceWrapper) RevokeApiKey(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListBanks operation middleware
+func (siw *ServerInterfaceWrapper) ListBanks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBanks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -777,6 +970,114 @@ func (siw *ServerInterfaceWrapper) CreateInvoice(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoice operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptShortfall operation middleware
+func (siw *ServerInterfaceWrapper) AcceptShortfall(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AcceptShortfallParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptShortfall(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) SetBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPayment operation middleware
 func (siw *ServerInterfaceWrapper) GetPayment(w http.ResponseWriter, r *http.Request) {
 
@@ -794,6 +1095,77 @@ func (siw *ServerInterfaceWrapper) GetPayment(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPayment(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartCheckout operation middleware
+func (siw *ServerInterfaceWrapper) StartCheckout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code TrackingCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartCheckout(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PaystackWebhook operation middleware
+func (siw *ServerInterfaceWrapper) PaystackWebhook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PaystackWebhookParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "x-paystack-signature" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("x-paystack-signature")]; found {
+		var XPaystackSignature string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "x-paystack-signature", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "x-paystack-signature", valueList[0], &XPaystackSignature, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "x-paystack-signature", Err: err})
+			return
+		}
+
+		params.XPaystackSignature = XPaystackSignature
+
+	} else {
+		err := fmt.Errorf("Header parameter x-paystack-signature is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "x-paystack-signature", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PaystackWebhook(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1151,6 +1523,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/webhook-endpoints", wrapper.CreateWebhookEndpoint)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/webhook-endpoints/{id}", wrapper.DeleteWebhookEndpoint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/webhook-endpoints/{id}/deliveries", wrapper.ListWebhookDeliveries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/banks", wrapper.ListBanks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/me/bank-account", wrapper.GetBankAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/me/bank-account", wrapper.SetBankAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/invoices/{id}", wrapper.GetInvoice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/invoices/{id}/accept-shortfall", wrapper.AcceptShortfall)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/pay/{code}/checkout", wrapper.StartCheckout)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/providers/paystack/webhook", wrapper.PaystackWebhook)
 
 	return m
 }
@@ -1335,6 +1714,57 @@ func (response RevokeApiKey409ApplicationProblemPlusJSONResponse) VisitRevokeApi
 	return err
 }
 
+type ListBanksRequestObject struct {
+}
+
+type ListBanksResponseObject interface {
+	VisitListBanksResponse(w http.ResponseWriter) error
+}
+
+type ListBanks200JSONResponse BankList
+
+func (response ListBanks200JSONResponse) VisitListBanksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBanks401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListBanks401ApplicationProblemPlusJSONResponse) VisitListBanksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBanks503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListBanks503ApplicationProblemPlusJSONResponse) VisitListBanksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -1451,6 +1881,270 @@ func (response CreateInvoice422ApplicationProblemPlusJSONResponse) VisitCreateIn
 	return err
 }
 
+type CreateInvoice503ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateInvoice503ApplicationProblemPlusJSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetInvoiceResponseObject interface {
+	VisitGetInvoiceResponse(w http.ResponseWriter) error
+}
+
+type GetInvoice200JSONResponse Invoice
+
+func (response GetInvoice200JSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoice401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetInvoice401ApplicationProblemPlusJSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoice404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoice404ApplicationProblemPlusJSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptShortfallRequestObject struct {
+	Id     ResourceId `json:"id"`
+	Params AcceptShortfallParams
+}
+
+type AcceptShortfallResponseObject interface {
+	VisitAcceptShortfallResponse(w http.ResponseWriter) error
+}
+
+type AcceptShortfall200JSONResponse Invoice
+
+func (response AcceptShortfall200JSONResponse) VisitAcceptShortfallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptShortfall401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptShortfall401ApplicationProblemPlusJSONResponse) VisitAcceptShortfallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptShortfall404ApplicationProblemPlusJSONResponse Problem
+
+func (response AcceptShortfall404ApplicationProblemPlusJSONResponse) VisitAcceptShortfallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptShortfall409ApplicationProblemPlusJSONResponse Problem
+
+func (response AcceptShortfall409ApplicationProblemPlusJSONResponse) VisitAcceptShortfallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBankAccountRequestObject struct {
+}
+
+type GetBankAccountResponseObject interface {
+	VisitGetBankAccountResponse(w http.ResponseWriter) error
+}
+
+type GetBankAccount200JSONResponse BankAccount
+
+func (response GetBankAccount200JSONResponse) VisitGetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBankAccount401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetBankAccount401ApplicationProblemPlusJSONResponse) VisitGetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBankAccount404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBankAccount404ApplicationProblemPlusJSONResponse) VisitGetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetBankAccountRequestObject struct {
+	Body *SetBankAccountJSONRequestBody
+}
+
+type SetBankAccountResponseObject interface {
+	VisitSetBankAccountResponse(w http.ResponseWriter) error
+}
+
+type SetBankAccount200JSONResponse BankAccount
+
+func (response SetBankAccount200JSONResponse) VisitSetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetBankAccount400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetBankAccount400ApplicationProblemPlusJSONResponse) VisitSetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetBankAccount401ApplicationProblemPlusJSONResponse Problem
+
+func (response SetBankAccount401ApplicationProblemPlusJSONResponse) VisitSetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetBankAccount422ApplicationProblemPlusJSONResponse Problem
+
+func (response SetBankAccount422ApplicationProblemPlusJSONResponse) VisitSetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetBankAccount503ApplicationProblemPlusJSONResponse Problem
+
+func (response SetBankAccount503ApplicationProblemPlusJSONResponse) VisitSetBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPaymentRequestObject struct {
 	Code TrackingCode `json:"code"`
 }
@@ -1485,6 +2179,105 @@ func (response GetPayment404ApplicationProblemPlusJSONResponse) VisitGetPaymentR
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCheckoutRequestObject struct {
+	Code TrackingCode `json:"code"`
+}
+
+type StartCheckoutResponseObject interface {
+	VisitStartCheckoutResponse(w http.ResponseWriter) error
+}
+
+type StartCheckout200JSONResponse Checkout
+
+func (response StartCheckout200JSONResponse) VisitStartCheckoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCheckout404ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response StartCheckout404ApplicationProblemPlusJSONResponse) VisitStartCheckoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCheckout409ApplicationProblemPlusJSONResponse Problem
+
+func (response StartCheckout409ApplicationProblemPlusJSONResponse) VisitStartCheckoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCheckout503ApplicationProblemPlusJSONResponse Problem
+
+func (response StartCheckout503ApplicationProblemPlusJSONResponse) VisitStartCheckoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PaystackWebhookRequestObject struct {
+	Params PaystackWebhookParams
+	Body   *PaystackWebhookJSONRequestBody
+}
+
+type PaystackWebhookResponseObject interface {
+	VisitPaystackWebhookResponse(w http.ResponseWriter) error
+}
+
+type PaystackWebhook200Response struct {
+}
+
+func (response PaystackWebhook200Response) VisitPaystackWebhookResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type PaystackWebhook401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response PaystackWebhook401ApplicationProblemPlusJSONResponse) VisitPaystackWebhookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1823,15 +2616,36 @@ type StrictServerInterface interface {
 	// RevokeApiKey Revoke an API key.
 	// (DELETE /v1/api-keys/{id})
 	RevokeApiKey(ctx context.Context, request RevokeApiKeyRequestObject) (RevokeApiKeyResponseObject, error)
+	// ListBanks Nigerian banks that can receive payouts.
+	// (GET /v1/banks)
+	ListBanks(ctx context.Context, request ListBanksRequestObject) (ListBanksResponseObject, error)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 	// CreateInvoice Create an invoice and its payment link.
 	// (POST /v1/invoices)
 	CreateInvoice(ctx context.Context, request CreateInvoiceRequestObject) (CreateInvoiceResponseObject, error)
+	// GetInvoice One of the contractor's invoices, with its quote and payout.
+	// (GET /v1/invoices/{id})
+	GetInvoice(ctx context.Context, request GetInvoiceRequestObject) (GetInvoiceResponseObject, error)
+	// AcceptShortfall Accept an underpaid invoice as paid.
+	// (POST /v1/invoices/{id}/accept-shortfall)
+	AcceptShortfall(ctx context.Context, request AcceptShortfallRequestObject) (AcceptShortfallResponseObject, error)
+	// GetBankAccount The contractor's payout bank account.
+	// (GET /v1/me/bank-account)
+	GetBankAccount(ctx context.Context, request GetBankAccountRequestObject) (GetBankAccountResponseObject, error)
+	// SetBankAccount Set or change the payout bank account.
+	// (PUT /v1/me/bank-account)
+	SetBankAccount(ctx context.Context, request SetBankAccountRequestObject) (SetBankAccountResponseObject, error)
 	// GetPayment What a payer sees when opening a payment link.
 	// (GET /v1/pay/{code})
 	GetPayment(ctx context.Context, request GetPaymentRequestObject) (GetPaymentResponseObject, error)
+	// StartCheckout Pay a link in naira by card or bank transfer.
+	// (POST /v1/pay/{code}/checkout)
+	StartCheckout(ctx context.Context, request StartCheckoutRequestObject) (StartCheckoutResponseObject, error)
+	// PaystackWebhook Paystack event callback.
+	// (POST /v1/providers/paystack/webhook)
+	PaystackWebhook(ctx context.Context, request PaystackWebhookRequestObject) (PaystackWebhookResponseObject, error)
 	// GetTracking The four-step tracking view of a payment.
 	// (GET /v1/track/{code})
 	GetTracking(ctx context.Context, request GetTrackingRequestObject) (GetTrackingResponseObject, error)
@@ -1974,6 +2788,30 @@ func (sh *strictHandler) RevokeApiKey(w http.ResponseWriter, r *http.Request, id
 	}
 }
 
+// ListBanks operation middleware
+func (sh *strictHandler) ListBanks(w http.ResponseWriter, r *http.Request) {
+	var request ListBanksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBanks(ctx, request.(ListBanksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBanks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBanksResponseObject); ok {
+		if err := validResponse.VisitListBanksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -2031,6 +2869,114 @@ func (sh *strictHandler) CreateInvoice(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// GetInvoice operation middleware
+func (sh *strictHandler) GetInvoice(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoice(ctx, request.(GetInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoiceResponseObject); ok {
+		if err := validResponse.VisitGetInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptShortfall operation middleware
+func (sh *strictHandler) AcceptShortfall(w http.ResponseWriter, r *http.Request, id ResourceId, params AcceptShortfallParams) {
+	var request AcceptShortfallRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptShortfall(ctx, request.(AcceptShortfallRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptShortfall")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptShortfallResponseObject); ok {
+		if err := validResponse.VisitAcceptShortfallResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBankAccount operation middleware
+func (sh *strictHandler) GetBankAccount(w http.ResponseWriter, r *http.Request) {
+	var request GetBankAccountRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBankAccount(ctx, request.(GetBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBankAccountResponseObject); ok {
+		if err := validResponse.VisitGetBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetBankAccount operation middleware
+func (sh *strictHandler) SetBankAccount(w http.ResponseWriter, r *http.Request) {
+	var request SetBankAccountRequestObject
+
+	var body SetBankAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetBankAccount(ctx, request.(SetBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetBankAccountResponseObject); ok {
+		if err := validResponse.VisitSetBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetPayment operation middleware
 func (sh *strictHandler) GetPayment(w http.ResponseWriter, r *http.Request, code TrackingCode) {
 	var request GetPaymentRequestObject
@@ -2050,6 +2996,65 @@ func (sh *strictHandler) GetPayment(w http.ResponseWriter, r *http.Request, code
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPaymentResponseObject); ok {
 		if err := validResponse.VisitGetPaymentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartCheckout operation middleware
+func (sh *strictHandler) StartCheckout(w http.ResponseWriter, r *http.Request, code TrackingCode) {
+	var request StartCheckoutRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartCheckout(ctx, request.(StartCheckoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartCheckout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartCheckoutResponseObject); ok {
+		if err := validResponse.VisitStartCheckoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PaystackWebhook operation middleware
+func (sh *strictHandler) PaystackWebhook(w http.ResponseWriter, r *http.Request, params PaystackWebhookParams) {
+	var request PaystackWebhookRequestObject
+
+	request.Params = params
+
+	var body PaystackWebhookJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PaystackWebhook(ctx, request.(PaystackWebhookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PaystackWebhook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PaystackWebhookResponseObject); ok {
+		if err := validResponse.VisitPaystackWebhookResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

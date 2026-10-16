@@ -46,17 +46,22 @@ type Querier interface {
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
 	GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error)
 	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
+	// Naira settlement. See ADR-041.
+	// Bank accounts ------------------------------------------------------------
+	GetBankAccount(ctx context.Context, contractorID uuid.UUID) (ContractorBankAccount, error)
 	GetChainCursor(ctx context.Context, network string) (int64, error)
 	GetChainTip(ctx context.Context, network string) (GetChainTipRow, error)
 	GetContractor(ctx context.Context, id uuid.UUID) (Contractor, error)
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
+	GetInvoiceForContractor(ctx context.Context, arg GetInvoiceForContractorParams) (GetInvoiceForContractorRow, error)
 	GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoice, error)
 	GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
+	GetRateQuote(ctx context.Context, id uuid.UUID) (RateQuote, error)
 	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
 	GetWebhookEndpoint(ctx context.Context, id uuid.UUID) (WebhookEndpoint, error)
 	GetWebhookEvent(ctx context.Context, id string) (WebhookEvent, error)
@@ -77,6 +82,11 @@ type Querier interface {
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
+	// Provider events -----------------------------------------------------------
+	// A replay of an event already stored inserts nothing and returns no row.
+	InsertProviderEvent(ctx context.Context, arg InsertProviderEventParams) (int64, error)
+	// Rate quotes ---------------------------------------------------------------
+	InsertRateQuote(ctx context.Context, arg InsertRateQuoteParams) error
 	InsertWebhookDelivery(ctx context.Context, arg InsertWebhookDeliveryParams) error
 	// Events and deliveries ---------------------------------------------------
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) error
@@ -135,6 +145,9 @@ type Querier interface {
 	// Sum of all postings per asset. Every row must be zero.
 	TrialBalance(ctx context.Context) ([]TrialBalanceRow, error)
 	UpdateInvoiceState(ctx context.Context, arg UpdateInvoiceStateParams) error
+	// A new or changed account waits until payouts_allowed_from; saving the
+	// same account again keeps its date and recipient.
+	UpsertBankAccount(ctx context.Context, arg UpsertBankAccountParams) (ContractorBankAccount, error)
 	// Chain tokens -----------------------------------------------------------
 	UpsertChainToken(ctx context.Context, arg UpsertChainTokenParams) error
 	// Contractors and API keys -----------------------------------------------

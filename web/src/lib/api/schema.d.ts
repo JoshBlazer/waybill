@@ -228,6 +228,143 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/banks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Nigerian banks that can receive payouts.
+     * @description Codes to use in `PUT /v1/me/bank-account`. Cached from the provider for a day.
+     */
+    get: operations["listBanks"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/me/bank-account": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The contractor's payout bank account. */
+    get: operations["getBankAccount"];
+    /**
+     * Set or change the payout bank account.
+     * @description Waybill asks the bank for the account's name and saves the account
+     *     only if it matches the contractor's legal name (every part of the
+     *     legal name present, in any order). A mismatch is a 422 showing the
+     *     name the bank holds. If the bank cannot be reached the account is
+     *     not saved and the answer is 503: "could not verify" is never
+     *     "verified".
+     *
+     *     Payouts to a changed account wait 24 hours (`payoutsAllowedFrom`),
+     *     so a stolen API key cannot redirect money at once.
+     */
+    put: operations["setBankAccount"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/invoices/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One of the contractor's invoices, with its quote and payout. */
+    get: operations["getInvoice"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/invoices/{id}/accept-shortfall": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Accept an underpaid invoice as paid.
+     * @description Moves an `underpaid` invoice to `confirmed` (the underpaid amount
+     *     settles as is). Only the invoice's contractor can do this. Repeating
+     *     it on an invoice that is already past `underpaid` is a 409.
+     */
+    post: operations["acceptShortfall"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/pay/{code}/checkout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pay a link in naira by card or bank transfer.
+     * @description Starts a Paystack test-mode checkout for the invoice's amount at its
+     *     locked rate and returns the page to send the payer to. Repeating it
+     *     for the same link returns the same checkout while it is open.
+     *     Available only for invoices with a naira quote that has not
+     *     expired.
+     */
+    post: operations["startCheckout"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/paystack/webhook": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Paystack event callback.
+     * @description Paystack posts transfer and charge events here. The handler checks
+     *     `x-paystack-signature` (HMAC-SHA512 of the raw body with the secret
+     *     key) before reading anything, stores the raw body, and processes
+     *     each event id once (I14). It answers 200 as soon as the event is
+     *     stored; the work happens in the worker. A bad signature is a 401
+     *     and nothing is stored.
+     */
+    post: operations["paystackWebhook"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -271,8 +408,10 @@ export interface components {
       asset: "USDC";
       /**
        * @description `hold` keeps the stablecoin in the contractor's balance. `naira`
-       *     converts and sends to the bank, and is accepted from stage 3; until
-       *     then it returns 422.
+       *     locks a rate now (see `Quote`) and sends naira to the verified bank
+       *     account once the invoice settles. `naira` needs a verified bank
+       *     account and an available rate: without either it is a 422 or a
+       *     503, and the invoice is not created.
        * @enum {string}
        */
       payout: "naira" | "hold";
@@ -314,6 +453,10 @@ export interface components {
       expiresAt: string;
       /** Format: date-time */
       createdAt: string;
+      /** @description Present when payout is `naira`. */
+      quote?: components["schemas"]["Quote"] | null;
+      /** @description The naira payout, present once a naira invoice has settled. */
+      payoutStatus?: components["schemas"]["Payout"] | null;
     };
     PaymentLink: {
       trackingCode: string;
@@ -487,6 +630,88 @@ export interface components {
         invoice: components["schemas"]["Invoice"];
       };
     };
+    Bank: {
+      /** @example 058 */
+      code: string;
+      /** @example Guaranty Trust Bank */
+      name: string;
+    };
+    BankList: {
+      items: components["schemas"]["Bank"][];
+    };
+    SetBankAccountRequest: {
+      bankCode: string;
+      /** @description A 10-digit NUBAN. */
+      accountNumber: string;
+    };
+    BankAccount: {
+      bankCode: string;
+      bankName: string;
+      /** @description Only the last four digits are ever shown again. */
+      accountNumberLast4: string;
+      /** @description The name the bank holds, which matched the legal name. */
+      accountName: string;
+      /** Format: date-time */
+      verifiedAt: string;
+      /**
+       * Format: date-time
+       * @description 24 hours after the account was last changed.
+       */
+      payoutsAllowedFrom: string;
+    };
+    /**
+     * @description The naira the contractor receives for this invoice, locked when the
+     *     invoice was created. `rate` is naira per 1 USDC as an exact Amount
+     *     (kobo, scale 2). A late payment is re-quoted.
+     */
+    Quote: {
+      rate: components["schemas"]["Amount"];
+      nairaAmount: components["schemas"]["Amount"];
+      /** @description Waybill's margin in basis points, already taken out of `rate`. */
+      spreadBps: number;
+      /** @example ExchangeRate-API */
+      source: string;
+      /** Format: date-time */
+      quotedAt: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    /**
+     * @description `unknown` means the provider did not answer and Waybill is checking
+     *     with it by reference; it is never shown as failed.
+     * @enum {string}
+     */
+    PayoutState:
+      | "queued"
+      | "converted"
+      | "held"
+      | "submitting"
+      | "submitted"
+      | "unknown"
+      | "succeeded"
+      | "failed"
+      | "reversed"
+      | "cancelled";
+    Payout: {
+      state: components["schemas"]["PayoutState"];
+      nairaAmount: components["schemas"]["Amount"];
+      bankName?: string;
+      accountNumberLast4?: string;
+      failureReason?: string | null;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    Checkout: {
+      /**
+       * Format: uri
+       * @description Paystack's test checkout page.
+       */
+      authorizationUrl: string;
+      reference: string;
+      amount: components["schemas"]["Amount"];
+      /** Format: date-time */
+      expiresAt: string;
+    };
     Problem: {
       /**
        * @description A URI reference identifying the problem type.
@@ -581,6 +806,7 @@ export interface operations {
       401: components["responses"]["Problem"];
       409: components["responses"]["Problem"];
       422: components["responses"]["Problem"];
+      503: components["responses"]["Problem"];
     };
   };
   getPayment: {
@@ -832,6 +1058,183 @@ export interface operations {
       };
       401: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
+    };
+  };
+  listBanks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The banks. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BankList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      503: components["responses"]["Problem"];
+    };
+  };
+  getBankAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The account. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BankAccount"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  setBankAccount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetBankAccountRequest"];
+      };
+    };
+    responses: {
+      /** @description Verified and saved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BankAccount"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+      503: components["responses"]["Problem"];
+    };
+  };
+  getInvoice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The invoice. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invoice"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  acceptShortfall: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Accepted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invoice"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  startCheckout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Tracking code, for example `WB-7KQ4-M2XD-9PRA-3HNC`. */
+        code: components["parameters"]["TrackingCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The checkout. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Checkout"];
+        };
+      };
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      503: components["responses"]["Problem"];
+    };
+  };
+  paystackWebhook: {
+    parameters: {
+      query?: never;
+      header: {
+        "x-paystack-signature": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          [key: string]: unknown;
+        };
+      };
+    };
+    responses: {
+      /** @description Stored (or already stored). */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Problem"];
     };
   };
 }
