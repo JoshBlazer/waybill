@@ -12,7 +12,7 @@ import (
 
 // moneyPackages are the directories (relative to this one) that handle
 // amounts. Add a package here when it starts handling money.
-var moneyPackages = []string{".", "../ledger", "../statemachine"}
+var moneyPackages = []string{".", "../ledger", "../statemachine", "../rates", "../paystack", "../sweep", "../txmgr"}
 
 // TestNoFloatsInMoneyPackages fails if any non-test source file in a money
 // package mentions a floating-point identifier: float32, float64, big.Float,
