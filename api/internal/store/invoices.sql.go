@@ -225,6 +225,17 @@ func (q *Queries) GetInvoiceForUpdate(ctx context.Context, id uuid.UUID) (Invoic
 	return i, err
 }
 
+const getInvoiceTrackingCode = `-- name: GetInvoiceTrackingCode :one
+SELECT tracking_code FROM invoices WHERE id = $1
+`
+
+func (q *Queries) GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getInvoiceTrackingCode, id)
+	var tracking_code string
+	err := row.Scan(&tracking_code)
+	return tracking_code, err
+}
+
 const insertAPIKey = `-- name: InsertAPIKey :exec
 INSERT INTO api_keys (contractor_id, prefix, secret_sha256)
 VALUES ($1, $2, $3)

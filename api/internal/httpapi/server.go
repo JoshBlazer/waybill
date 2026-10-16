@@ -31,6 +31,9 @@ type Server struct {
 	Version  string
 	Networks []string
 	Log      *slog.Logger
+	// WebhookAllowPrivate accepts http and private hosts for webhook
+	// endpoints. Local development on Anvil only.
+	WebhookAllowPrivate bool
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -73,7 +76,14 @@ func (s *Server) logger() *slog.Logger {
 // TestAuthenticatedOperationsMatchSpec keeps it in step with the `security`
 // entries in openapi/waybill.yaml.
 var authenticatedOperations = map[string]bool{
-	"CreateInvoice": true,
+	"CreateInvoice":         true,
+	"CreateApiKey":          true,
+	"ListApiKeys":           true,
+	"RevokeApiKey":          true,
+	"CreateWebhookEndpoint": true,
+	"ListWebhookEndpoints":  true,
+	"DeleteWebhookEndpoint": true,
+	"ListWebhookDeliveries": true,
 }
 
 // IsAuthenticated reports whether an operation requires a contractor key.

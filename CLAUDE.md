@@ -31,6 +31,7 @@ api/                 Go module, one binary: cmd/waybill (api | worker | watcher 
   internal/invoice   create invoices, load views, apply state transitions
   internal/watcher   EVM payment detection, confirmation, finality, reorgs
   internal/outbox    transactional outbox: enqueue in the caller's tx; worker leases with SKIP LOCKED
+  internal/webhook   signed outgoing invoice events: emit in the state-change tx, deliver from the worker
   internal/tracking  four-step public tracking view (pure)
   internal/evm, deployments  CREATE2 deposit addresses; on-chain deployment checks
   internal/auth      contractor API keys

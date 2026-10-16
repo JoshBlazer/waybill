@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -24,6 +24,10 @@ tags:
     description: Contractor invoices and their payment links.
   - name: public
     description: Pages anyone with the link can open.
+  - name: keys
+    description: The contractor's own API keys.
+  - name: webhooks
+    description: Signed event notifications to the contractor's servers.
 paths:
   /v1/health:
     get:
@@ -143,6 +147,200 @@ paths:
         "404":
           $ref: "#/components/responses/Problem"
 
+  /v1/api-keys:
+    post:
+      operationId: createApiKey
+      tags: [keys]
+      summary: Create an API key.
+      description: |
+        Creates a new key for the authenticated contractor. The full key is in
+        this response only; Waybill stores a SHA-256 hash of it and cannot
+        show it again. Keys are always test-mode (`wb_test_…`).
+
+        Retrying with the same `Idempotency-Key` and body does not create a
+        second key and cannot return the first one again: it is a 409 whose
+        `detail` names the key that was created. Revoke it if it was not
+        saved. The same key with a different body is a 422.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+      responses:
+        "201":
+          description: Created. `key` is shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedApiKey"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+    get:
+      operationId: listApiKeys
+      tags: [keys]
+      summary: List the contractor's API keys, newest first.
+      description: Secrets are never returned; each key is identified by its public prefix.
+      security:
+        - contractorKey: []
+      responses:
+        "200":
+          description: The keys, including revoked ones.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyList"
+        "401":
+          $ref: "#/components/responses/Problem"
+
+  /v1/api-keys/{id}:
+    delete:
+      operationId: revokeApiKey
+      tags: [keys]
+      summary: Revoke an API key.
+      description: |
+        The key stops working at once. Revoking is permanent and idempotent:
+        revoking a revoked key is a 204. Revoking the contractor's last active
+        key is a 409, so nobody locks themselves out.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/webhook-endpoints:
+    post:
+      operationId: createWebhookEndpoint
+      tags: [webhooks]
+      summary: Register a URL to receive signed events.
+      description: |
+        Waybill POSTs a `WebhookEvent` to `url` for each subscribed event,
+        signed as described on `WebhookEvent`. The signing secret is in this
+        response only. A retry with the same `Idempotency-Key` and body is a
+        409 naming the endpoint, as for API keys.
+
+        `url` must be `https` on a public host. Private, loopback and
+        link-local addresses are refused here and again at delivery time
+        (after DNS resolution), so a webhook cannot reach Waybill's own
+        network. Local development may allow `http://localhost` through
+        server configuration; the API never does by default.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookEndpointRequest"
+      responses:
+        "201":
+          description: Created. `secret` is shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedWebhookEndpoint"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+    get:
+      operationId: listWebhookEndpoints
+      tags: [webhooks]
+      summary: List the contractor's webhook endpoints.
+      security:
+        - contractorKey: []
+      responses:
+        "200":
+          description: The endpoints, without secrets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointList"
+        "401":
+          $ref: "#/components/responses/Problem"
+
+  /v1/webhook-endpoints/{id}:
+    delete:
+      operationId: deleteWebhookEndpoint
+      tags: [webhooks]
+      summary: Stop sending events to an endpoint.
+      description: |
+        Disables the endpoint; no new deliveries are created and pending
+        retries are cancelled. Its delivery log is kept. Idempotent.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "204":
+          description: Disabled.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/webhook-endpoints/{id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags: [webhooks]
+      summary: The delivery log for an endpoint, newest first.
+      description: One entry per attempt, with the response status and latency.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - name: before
+          in: query
+          required: false
+          description: Return attempts older than this delivery id (from the previous page).
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A page of attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     contractorKey:
@@ -160,6 +358,13 @@ components:
         type: string
         minLength: 1
         maxLength: 255
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     TrackingCode:
       name: code
       in: path
@@ -376,6 +581,243 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    CreateApiKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: A label to tell keys apart, e.g. where the key is used.
+          example: Accounting export
+
+    ApiKey:
+      type: object
+      additionalProperties: false
+      required: [id, name, prefix, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prefix:
+          type: string
+          pattern: "^wb_test_[0-9a-z]{8}$"
+          description: The public start of the key, enough to recognise it.
+          example: wb_test_k3m9x2qa
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreatedApiKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: The full key. Shown once; store it now.
+              example: wb_test_k3m9x2qa_7Hq2pV9sLw4nX8rT1mZb6cYd
+
+    ApiKeyList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKey"
+
+    WebhookEventType:
+      type: string
+      description: |
+        Invoice state changes, named after the state reached.
+        `invoice.reopened` means a reorg removed a payment and the invoice is
+        open again while Waybill rechecks the chain.
+      enum:
+        - invoice.received
+        - invoice.underpaid
+        - invoice.overpaid
+        - invoice.confirmed
+        - invoice.settled
+        - invoice.expired
+        - invoice.reopened
+
+    CreateWebhookEndpointRequest:
+      type: object
+      additionalProperties: false
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2000
+          pattern: "^https://"
+          example: https://example.com/hooks/waybill
+        events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        description:
+          type: string
+          maxLength: 200
+
+    WebhookEndpoint:
+      type: object
+      additionalProperties: false
+      required: [id, url, events, enabled, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        description:
+          type: string
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    CreatedWebhookEndpoint:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: The signing secret. Shown once; store it now.
+              pattern: "^whsec_test_[0-9A-Za-z]{32}$"
+
+    WebhookEndpointList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpoint"
+
+    WebhookDelivery:
+      type: object
+      additionalProperties: false
+      required: [id, eventId, eventType, attempt, outcome, createdAt]
+      description: One attempt to deliver one event.
+      properties:
+        id:
+          type: integer
+          format: int64
+        eventId:
+          type: string
+          example: evt_01J9ZQ7W3X4Y5Z6A7B8C9D0E1F
+        eventType:
+          $ref: "#/components/schemas/WebhookEventType"
+        attempt:
+          type: integer
+          minimum: 1
+        outcome:
+          type: string
+          enum: [succeeded, failed, refused]
+          description: |
+            `succeeded`: a 2xx response. `failed`: any other response, a
+            timeout or a connection error; retried with backoff. `refused`:
+            the URL resolved to a private address and nothing was sent.
+        responseStatus:
+          type: integer
+          nullable: true
+          description: The HTTP status received, if any.
+        latencyMs:
+          type: integer
+          nullable: true
+        error:
+          type: string
+          nullable: true
+          description: Why it failed, without the response body.
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the next retry runs; null after success or the last attempt.
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookDeliveryList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDelivery"
+        nextBefore:
+          type: integer
+          format: int64
+          nullable: true
+          description: Pass as `before` for the next page; null on the last page.
+
+    WebhookEvent:
+      type: object
+      additionalProperties: false
+      required: [id, type, createdAt, data]
+      description: |
+        The body Waybill POSTs to a webhook endpoint (`Content-Type:
+        application/json`). Not an endpoint of this API; defined here so
+        clients can generate a type for it.
+
+        **Signature.** Each request has a header
+        `Waybill-Signature: t=<unix seconds>,v1=<hex>`, where `<hex>` is
+        HMAC-SHA256 with the endpoint secret over `<t>.<raw body>`. Verify
+        the HMAC over the raw bytes before parsing, compare in constant
+        time, and reject a `t` more than five minutes from now.
+
+        **Delivery.** At least once. The same event can arrive more than
+        once with the same `id`: process each `id` once. Events can arrive
+        out of order; `data.invoice.state` is the state when the event was
+        created. A non-2xx response or no response within 10 seconds is
+        retried with exponential backoff for about 24 hours.
+      properties:
+        id:
+          type: string
+          pattern: "^evt_[0-9A-Z]{26}$"
+          description: Unique per event, the same on every retry.
+        type:
+          $ref: "#/components/schemas/WebhookEventType"
+        createdAt:
+          type: string
+          format: date-time
+        data:
+          type: object
+          additionalProperties: false
+          required: [invoice]
+          properties:
+            invoice:
+              $ref: "#/components/schemas/Invoice"
 
     Problem:
       type: object

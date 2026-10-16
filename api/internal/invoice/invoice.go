@@ -153,6 +153,18 @@ func (s *Service) Create(ctx context.Context, tx pgx.Tx, contractor uuid.UUID, i
 	}, nil
 }
 
+// LoadByID returns the invoice with this id, as Load does.
+func LoadByID(ctx context.Context, db store.DBTX, tokens map[safety.Network]string, id uuid.UUID) (Invoice, error) {
+	code, err := store.New(db).GetInvoiceTrackingCode(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Invoice{}, ErrNotFound
+	}
+	if err != nil {
+		return Invoice{}, err
+	}
+	return Load(ctx, db, tokens, code)
+}
+
 // Load returns the invoice with this tracking code, with contractor name,
 // deposit addresses and events.
 func Load(ctx context.Context, db store.DBTX, tokens map[safety.Network]string, code string) (Invoice, error) {

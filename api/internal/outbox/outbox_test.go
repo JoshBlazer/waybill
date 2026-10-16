@@ -295,3 +295,22 @@ func TestDefaultBackoff(t *testing.T) {
 		}
 	}
 }
+
+func TestOutbox_TopicPolicyOverridesDefaults(t *testing.T) {
+	pool := testdb.New(t)
+	enqueue(t, pool, "test.patient", 1, outbox.Options{})
+	calls := 0
+	w := worker(pool, "w1", map[string]outbox.Handler{"test.patient": func(context.Context, outbox.Job) error {
+		calls++
+		return errors.New("not yet")
+	}})
+	w.Policies = map[string]outbox.Policy{"test.patient": {MaxAttempts: 5, Backoff: func(int) time.Duration { return 0 }}}
+	for range 8 {
+		if _, err := w.RunOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 5 {
+		t.Fatalf("handler ran %d times; want the topic's 5, not the default 3", calls)
+	}
+}

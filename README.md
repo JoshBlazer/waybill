@@ -34,7 +34,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Transaction manager nonce and fee logic (hand-written) | Design note, signatures and failing tests ready; awaiting implementation | [PR #7](../../pull/7) |
 | `BatchPayout` contract: all-or-nothing batches through the vault's payout-id guard and limits | Done (stage 2); deployed with the payout plumbing | `make test-contracts` (10 unit tests, 4 invariants) |
 | Outbox and worker: jobs enqueued in the same transaction as the change, leased with `SKIP LOCKED`, retried with backoff, dead after the last attempt; invoice expiry runs in the worker | Done (stage 2) | `go test ./internal/outbox` (12 tests incl. 8 concurrent workers) |
-| Transaction manager plumbing, sweeping, webhooks | Not started (stage 2) | — |
+| API key management (create, list, revoke) and signed outgoing webhooks: invoice events delivered by the worker, retried for about a day, every attempt logged, SSRF guard on endpoint URLs | Done (stage 2) | `go test ./internal/webhook ./internal/httpapi` |
+| Transaction manager plumbing, sweeping | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
 | Ethereum Sepolia, Bitcoin, RPC failover, observability | Not started (stage 5) | — |
