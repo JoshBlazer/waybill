@@ -18,7 +18,6 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/db"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
-	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/money"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
@@ -96,12 +95,6 @@ func runWatcher(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	var wg sync.WaitGroup
-	// Expiry runs here, once per process, until the outbox worker exists.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		invoice.RunExpiry(ctx, pool, 30*time.Second, log)
-	}()
 	for n, c := range chains {
 		wcfg := watchPolicy(n)
 		wcfg.Token = c.deployment.Token

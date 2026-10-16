@@ -10,7 +10,7 @@ All commands run inside WSL Ubuntu from `~/waybill`.
 
 | Command | What it does |
 |---|---|
-| `make up` / `make down` | Start (and wait for healthy) / stop the local stack: PostgreSQL, Anvil, migrate, API, web |
+| `make up` / `make down` | Start (and wait for healthy) / stop the local stack: PostgreSQL, Anvil, migrate, API, watcher, worker, web |
 | `make test` | Go tests (incl. testcontainers), Foundry tests, Vitest |
 | `make lint` | golangci-lint, `forge fmt --check`, ESLint, `tsc`, Prettier, codegen drift check |
 | `make gen` | Regenerate Go server types, sqlc code and TS types from `openapi/` and `api/db/` |
@@ -29,7 +29,8 @@ api/                 Go module, one binary: cmd/waybill (api | worker | watcher 
   internal/ledger    double-entry ledger; post.go is HAND-WRITTEN by the owner
   internal/statemachine  pure invoice (and later payout) state machines
   internal/invoice   create invoices, load views, apply state transitions
-  internal/watcher   EVM payment detection, confirmation, finality
+  internal/watcher   EVM payment detection, confirmation, finality, reorgs
+  internal/outbox    transactional outbox: enqueue in the caller's tx; worker leases with SKIP LOCKED
   internal/tracking  four-step public tracking view (pure)
   internal/evm, deployments  CREATE2 deposit addresses; on-chain deployment checks
   internal/auth      contractor API keys
