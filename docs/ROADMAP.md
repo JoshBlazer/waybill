@@ -2,7 +2,6 @@
 
 Each stage ends only when its exit check has been run and has passed. The exit-check command and its result are recorded in the stage's walkthrough. Every stage ends with a walkthrough of what was built and why, plus ten interview questions about it.
 
-
 ## Stage 0 — Foundations
 
 - [x] Product, architecture, design, roadmap, decisions and risks documents; `CLAUDE.md`; README with status table.
