@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -300,8 +301,11 @@ func TestTxMgr_OnlyLeaseHolderTicks(t *testing.T) {
 	if _, err := r.m.Submit(context.Background(), payment("p")); err != nil {
 		t.Fatal(err)
 	}
-	other := *r.m
-	other.Owner = "worker-b"
+	other := &txmgr.Manager{
+		Pool: r.m.Pool, Chain: r.m.Chain, Signer: r.m.Signer, Network: r.m.Network, ChainID: r.m.ChainID,
+		Owner: "worker-b", Log: r.m.Log, LeaseTTL: r.m.LeaseTTL, MaxFeeCap: r.m.MaxFeeCap,
+		BumpPercent: r.m.BumpPercent, StuckAfter: r.m.StuckAfter, Confirmations: r.m.Confirmations,
+	}
 	if err := other.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -329,5 +333,53 @@ func TestSecret_NeverAppearsInLogs(t *testing.T) {
 	}
 	if _, err := txmgr.ParseKey("0x" + keyHex[:10] + "zz"); err == nil || strings.Contains(err.Error(), keyHex[:10]) {
 		t.Fatalf("bad key error %v; must fail without echoing the input", err)
+	}
+}
+
+// driftingTips makes every fee quote different and slow, so a broadcast by
+// Tick that interleaves with Submit's would show up as a second attempt.
+type driftingTips struct {
+	txmgr.Chain
+	mu sync.Mutex
+	n  int64
+}
+
+func (c *driftingTips) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	c.mu.Lock()
+	c.n++
+	n := c.n
+	c.mu.Unlock()
+	time.Sleep(30 * time.Millisecond)
+	tip, err := c.Chain.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return tip.Add(tip, big.NewInt(n)), nil
+}
+
+// Submit and the Tick loop in the same process never both broadcast a new
+// transaction: each gets exactly one attempt.
+func TestTxMgr_SubmitAndTickDoNotDoubleBroadcast(t *testing.T) {
+	r := newManager(t, "--no-mining")
+	r.m.Chain = &driftingTips{Chain: r.m.Chain}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ctx.Err() == nil {
+			_ = r.m.Tick(ctx)
+		}
+	}()
+	for i := range 5 {
+		if _, err := r.m.Submit(context.Background(), payment(fmt.Sprintf("p%d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cancel()
+	<-done
+	for i := range 5 {
+		if got := r.attempts(t, r.row(t, fmt.Sprintf("p%d", i))); len(got) != 1 {
+			t.Fatalf("transaction p%d has %d attempts; Submit and Tick both broadcast it", i, len(got))
+		}
 	}
 }

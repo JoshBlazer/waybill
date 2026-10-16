@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -69,6 +70,12 @@ type Manager struct {
 	StuckAfter    time.Duration // replace an attempt not mined after this long
 	Confirmations uint64        // blocks, including the receipt's, before mined counts
 	Now           func() time.Time
+
+	// mu makes Submit and Tick take turns within this process. The lease
+	// keeps other processes out; without mu, Tick could find a row Submit
+	// has just committed, before its first attempt exists, and broadcast it
+	// a second time with different fees.
+	mu sync.Mutex
 }
 
 func (m *Manager) now() time.Time {
@@ -92,6 +99,8 @@ func (m *Manager) signer() string { return evm.NormalizeAddress(m.Signer.Address
 // Once a nonce is assigned the row must be mined eventually; a failed first
 // broadcast is retried by Tick.
 func (m *Manager) Submit(ctx context.Context, req Request) (store.OutboundTx, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	q := store.New(m.Pool)
 	row, err := q.GetOutboundTxByRef(ctx, store.GetOutboundTxByRefParams{Purpose: req.Purpose, RefID: req.RefID})
 	switch {
@@ -240,6 +249,8 @@ func (m *Manager) broadcast(ctx context.Context, row store.OutboundTx, f Fees) e
 // Only the lease holder ticks; another process holding the key is not an
 // error. An RPC error stops the tick with nothing recorded (I12).
 func (m *Manager) Tick(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, err := AcquireLease(ctx, m.Pool, m.Signer.Address(), m.Network, m.Owner, m.LeaseTTL); err != nil {
 		if errors.Is(err, ErrLeaseHeld) {
 			return nil
