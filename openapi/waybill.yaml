@@ -156,6 +156,11 @@ paths:
         Creates a new key for the authenticated contractor. The full key is in
         this response only; Waybill stores a SHA-256 hash of it and cannot
         show it again. Keys are always test-mode (`wb_test_…`).
+
+        Retrying with the same `Idempotency-Key` and body does not create a
+        second key and cannot return the first one again: it is a 409 whose
+        `detail` names the key that was created. Revoke it if it was not
+        saved. The same key with a different body is a 422.
       security:
         - contractorKey: []
       parameters:
@@ -229,7 +234,8 @@ paths:
       description: |
         Waybill POSTs a `WebhookEvent` to `url` for each subscribed event,
         signed as described on `WebhookEvent`. The signing secret is in this
-        response only.
+        response only. A retry with the same `Idempotency-Key` and body is a
+        409 naming the endpoint, as for API keys.
 
         `url` must be `https` on a public host. Private, loopback and
         link-local addresses are refused here and again at delivery time

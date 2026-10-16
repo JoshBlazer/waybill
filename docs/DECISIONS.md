@@ -229,7 +229,7 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Decision:** `deploy/compose.yaml` gains a `worker` service on the existing API image (128 MB). It runs `outbox.Worker` and invoice expiry. Expiry moves out of the watcher.
 **Consequences:** No new image or dependency. The worker can be killed on its own without touching the API or the watcher, which the "pull the plug" demo relies on (ADR-005). Several workers may run, because leases keep them on separate jobs and expiry is safe to repeat.
 ## ADR-038 Public API: key management and outgoing webhooks
-**Status:** Proposed, 2026-10-16. Awaiting owner approval of the OpenAPI changes; no implementation yet.
+**Status:** Accepted, 2026-10-16 (owner approved the OpenAPI changes and the four choices in PR #11).
 **Context:** Contractors can only get an API key from `seed-dev`, and nothing tells their systems when an invoice changes state. The roadmap's stage 2 asks for public API keys and signed outgoing webhooks with retries and a delivery log (invariant I13).
 **Decision:** OpenAPI 0.3.0 adds seven operations, all authenticated by contractor key:
 - `POST`, `GET /v1/api-keys` and `DELETE /v1/api-keys/{id}`. A full key is shown once. Revoking the last active key is a 409.
@@ -240,3 +240,5 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - Schema: `api_keys` gains `name` and `last_used_at`; new `webhook_endpoints`, `webhook_events` and `webhook_deliveries` tables. The ledger schema is unchanged.
 - Webhook secrets must be readable to sign, so they are stored as given (test-mode only), redacted from logs, and never returned after creation. Encryption at rest with a KMS is out of scope for a test-network project and is listed in RISKS.md.
 - OpenAPI 3.0 has no `webhooks` section, so the event body is defined as the `WebhookEvent` schema.
+- Replaying a create request cannot return a secret that was shown once, so a retry with the same `Idempotency-Key` and body is a 409 naming the resource. The idempotency record stores only the public part.
+- `WAYBILL_WEBHOOK_ALLOW_PRIVATE=1` allows http and private hosts for local testing, and config refuses it unless every chain is Anvil.

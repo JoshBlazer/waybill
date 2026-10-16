@@ -57,3 +57,22 @@ func TestLoadFrom_Defaults(t *testing.T) {
 		t.Fatal("RequireDatabase passed with DATABASE_URL unset")
 	}
 }
+
+func TestLoadFrom_WebhookAllowPrivateOnlyOnAnvil(t *testing.T) {
+	cfg, err := LoadFrom(env(map[string]string{
+		"WAYBILL_CHAINS": "evm:31337=http://anvil:8545", "WAYBILL_WEBHOOK_ALLOW_PRIVATE": "1",
+	}))
+	if err != nil || !cfg.WebhookAllowPrivate {
+		t.Fatalf("on Anvil: %+v, %v; want allowed", cfg.WebhookAllowPrivate, err)
+	}
+	_, err = LoadFrom(env(map[string]string{
+		"WAYBILL_CHAINS": "evm:31337=http://anvil:8545,evm:84532=https://sepolia.base.org", "WAYBILL_WEBHOOK_ALLOW_PRIVATE": "1",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "evm:84532") {
+		t.Fatalf("with Base Sepolia configured: err = %v; want a refusal naming the network", err)
+	}
+	cfg, err = LoadFrom(env(map[string]string{"WAYBILL_CHAINS": "evm:84532=https://sepolia.base.org"}))
+	if err != nil || cfg.WebhookAllowPrivate {
+		t.Fatalf("unset: %+v, %v; want off", cfg.WebhookAllowPrivate, err)
+	}
+}

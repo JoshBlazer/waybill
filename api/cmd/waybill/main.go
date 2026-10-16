@@ -115,10 +115,12 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Invoices: &invoice.Service{Deployments: deps, Now: time.Now},
 			Tokens:   tokens,
 			WebURL:   cfg.WebURL,
-			Broker:   broker,
-			Version:  cfg.Version,
-			Networks: cfg.Networks(),
-			Log:      log,
+
+			WebhookAllowPrivate: cfg.WebhookAllowPrivate,
+			Broker:              broker,
+			Version:             cfg.Version,
+			Networks:            cfg.Networks(),
+			Log:                 log,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

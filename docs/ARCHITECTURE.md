@@ -224,7 +224,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I10 | **One writer per signing key; no nonce is used twice.** | `signer_nonces` lease; unique `(signer, network, nonce)` | `TestTxMgr_ConcurrentSendersNeverShareNonce` *(stage 2)* |
 | I11 | **Stuck transactions are replaced by raising both fees by at least the node's minimum bump; every hash is recorded.** | txmgr fee logic | `TestTxMgr_ReplacementBumpsBothFees` (`rapid`), `TestTxMgr_AllAttemptHashesRecorded` *(stage 2)* |
 | I12 | **"Couldn't find out" is distinct from "no".** An RPC or provider error never becomes "not paid" or "not sent". | Tri-state results (`Known(true)`, `Known(false)`, `Unknown(err)`); payout `unknown` state | `TestWatcher_RPCErrorDoesNotAdvance`, `TestWatcher_FinalizedTagUnknownFinalisesNothing`, `TestCheck_RPCUnreachableFailsClosed` *(exist)*; `TestPayout_ProviderTimeoutGoesUnknownNotFailed` *(stage 3)* |
-| I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff` *(stage 2)* |
+| I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff`, `TestWebhook_PrivateAddressAtDeliveryIsRefused` in `api/internal/webhook` *(exist)* |
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce` *(stage 3)* |
 | I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `secret.String` redacts in `String()`/`LogValue()`; `Signer` interface; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(stage 1)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
 | I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant tests `invariant_VaultOutflowEqualsRecordedPayouts`, `invariant_PayoutIdPaidAtMostOnce`, `invariant_DailyTotalWithinLimit`, `invariant_BatchesAllOrNothing` in `contracts/test/BatchPayout.invariant.t.sol` *(exist)* |
@@ -240,6 +240,13 @@ Each invariant names the test that proves it. A test that does not exist yet car
 - A job has an optional dedupe key, so enqueueing the same logical job twice is a no-op. A failed job is retried with exponential backoff (2 s doubling to 10 min) and goes `dead` after its last attempt, or at once on a permanent error or a topic nothing handles. Dead jobs keep their last error and wait for a person.
 - A handler gets 90 % of the lease, so it finishes before another worker can take the job. Only the current lease holder can record an outcome; a worker that lost its lease records nothing.
 - Live updates use `NOTIFY` in the same transaction. The API `LISTEN`s and fans out to SSE clients. A reconnecting client sends `Last-Event-ID` and gets the missed rows from `invoice_events`. No broker is involved.
+
+### Outgoing webhooks
+
+- `invoice.Apply` writes a `webhook_events` row and one `webhook.deliver` outbox job per subscribed, enabled endpoint, in the same transaction as the state change. With no subscriber nothing is written.
+- The event stores the invoice state at that moment. The worker renders the body at delivery time as the API's `Invoice`, with that state, so a late delivery never shows a later state.
+- Delivery signs `t.body` with HMAC-SHA256 (`Waybill-Signature`). It allows 10 s for an answer, does not follow redirects, and logs every attempt in `webhook_deliveries`. Retries back off from 30 s to a 4 h ceiling over 15 attempts (about 24 h).
+- SSRF guard: URLs must be https on a public host at registration, and the dialer refuses private, loopback, link-local and shared addresses after DNS resolution. A refused attempt sends nothing and is not retried.
 
 ## 8. Chain watching
 
