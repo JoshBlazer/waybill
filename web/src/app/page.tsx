@@ -37,6 +37,11 @@ export default function Home() {
             Create a test invoice
           </Link>
         </p>
+        <p>
+          <Link href="/account/bank" className="underline">
+            Bank account for naira payouts
+          </Link>
+        </p>
       </header>
 
       <section
