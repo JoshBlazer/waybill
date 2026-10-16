@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/JoshBlazer/waybill/api/internal/money"
 	"github.com/google/uuid"
@@ -43,6 +44,8 @@ type Querier interface {
 	// With a dedupe key already used, nothing is inserted and no row returns.
 	EnqueueOutbox(ctx context.Context, arg EnqueueOutboxParams) (int64, error)
 	FinishOutboundTx(ctx context.Context, arg FinishOutboundTxParams) (int64, error)
+	// When money first arrived for the invoice, by chain or by card.
+	FirstPaymentDetectedAt(ctx context.Context, invoice uuid.UUID) (time.Time, error)
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
@@ -66,6 +69,8 @@ type Querier interface {
 	GetOpenCheckout(ctx context.Context, invoiceID uuid.UUID) (Checkout, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
+	GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error)
+	GetPayoutByReference(ctx context.Context, reference string) (Payout, error)
 	GetRateQuote(ctx context.Context, id uuid.UUID) (RateQuote, error)
 	GetReversalOf(ctx context.Context, entryID *int64) (int64, error)
 	GetWebhookEndpoint(ctx context.Context, id uuid.UUID) (WebhookEndpoint, error)
@@ -88,6 +93,8 @@ type Querier interface {
 	InsertOutboundTx(ctx context.Context, arg InsertOutboundTxParams) (OutboundTx, error)
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
+	InsertPayout(ctx context.Context, arg InsertPayoutParams) (Payout, error)
+	InsertPayoutEvent(ctx context.Context, arg InsertPayoutEventParams) error
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
 	// Provider events -----------------------------------------------------------
 	// A replay of an event already stored inserts nothing and returns no row.
@@ -104,6 +111,7 @@ type Querier interface {
 	// SKIP LOCKED lets concurrent workers take disjoint jobs without waiting.
 	LeaseOutbox(ctx context.Context, arg LeaseOutboxParams) ([]LeaseOutboxRow, error)
 	ListAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]ListAPIKeysRow, error)
+	ListActivePayouts(ctx context.Context) ([]Payout, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
@@ -115,8 +123,13 @@ type Querier interface {
 	ListOpenCheckouts(ctx context.Context) ([]Checkout, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
+	ListPayoutEvents(ctx context.Context, invoiceID uuid.UUID) ([]PayoutEvent, error)
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
+	// Naira payouts. See docs/design/payout.md.
+	// Settled naira invoices that have no payout yet, with what arrived: the
+	// final on-chain payments, or a paid card checkout.
+	ListSettledNairaWithoutPayout(ctx context.Context) ([]ListSettledNairaWithoutPayoutRow, error)
 	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
 	ListUnprocessedProviderEvents(ctx context.Context, arg ListUnprocessedProviderEventsParams) ([]ProviderEvent, error)
 	// Sweeping --------------------------------------------------------------
@@ -133,6 +146,7 @@ type Querier interface {
 	// Serialises revocations for one contractor, so two concurrent revokes
 	// cannot each see the other key as "still active" and remove both.
 	LockContractorAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]LockContractorAPIKeysRow, error)
+	LockPayout(ctx context.Context, id uuid.UUID) (Payout, error)
 	// Locks the key's row until the caller's transaction ends. db_now is the
 	// database clock, so lease checks never depend on the caller's clock.
 	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
@@ -147,8 +161,12 @@ type Querier interface {
 	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
+	SetBankRecipient(ctx context.Context, arg SetBankRecipientParams) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	SetCheckoutURL(ctx context.Context, arg SetCheckoutURLParams) (Checkout, error)
+	SetPayoutConversion(ctx context.Context, arg SetPayoutConversionParams) error
+	SetPayoutState(ctx context.Context, arg SetPayoutStateParams) error
+	SetPayoutTransferCode(ctx context.Context, arg SetPayoutTransferCodeParams) error
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)

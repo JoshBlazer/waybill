@@ -36,6 +36,7 @@ api/                 Go module, one binary: cmd/waybill (api | worker | watcher 
   internal/bankverify  bank account name resolution and legal-name matching
   internal/paystack  test-mode client: resolve, recipients, transfers, verify, webhook signatures
   internal/checkout  card and bank pay-in: Paystack checkout, reconciled by reference
+  internal/payout    naira payouts: convert, submit, reconcile unknown, ledger at each step
   internal/testchain Anvil in testcontainers plus contract bytecode (contracts.json, `make fixtures`)
   internal/outbox    transactional outbox: enqueue in the caller's tx; worker leases with SKIP LOCKED
   internal/webhook   signed outgoing invoice events: emit in the state-change tx, deliver from the worker

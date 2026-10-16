@@ -55,12 +55,23 @@ const (
 	EventPaymentReorged  = string(statemachine.EvPaymentReorged)
 )
 
+// Payout is the part of a naira payout the tracking view needs. State is a
+// statemachine.PayoutState; the times come from its events.
+type Payout struct {
+	State       statemachine.PayoutState
+	ConvertedAt *time.Time
+	SentAt      *time.Time
+}
+
 // Build returns the four steps for an invoice in state s with payout mode
-// mode ("hold" or "naira"), given its events in order.
+// mode ("hold" or "naira"), given its events in order and its payout (nil
+// until one exists).
 //
 // "Confirmed" means safe from being undone, which is finality (settled),
-// not the first N confirmations; until then the step is current.
-func Build(s statemachine.InvoiceState, mode string, events []Event) []Step {
+// not the first N confirmations; until then the step is current. A payout
+// whose provider did not answer shows sent to bank as checking, never as
+// failed (I12).
+func Build(s statemachine.InvoiceState, mode string, events []Event, payout *Payout) []Step {
 	received := Step{Name: Received, Status: Waiting}
 	confirmed := Step{Name: Confirmed, Status: Waiting}
 	converted := Step{Name: Converted, Status: Waiting}
@@ -82,12 +93,34 @@ func Build(s statemachine.InvoiceState, mode string, events []Event) []Step {
 		if mode == "hold" {
 			converted.Status, sent.Status = Skipped, Skipped
 		} else {
-			converted.Status = Current // naira settlement arrives in stage 3
+			converted, sent = payoutSteps(converted, sent, payout)
 		}
 	case statemachine.InvoiceExpired, statemachine.InvoiceCancelled:
 		// Nothing is in progress; the invoice state explains why.
 	}
 	return []Step{received, confirmed, converted, sent}
+}
+
+func payoutSteps(converted, sent Step, p *Payout) (Step, Step) {
+	if p == nil || p.State == statemachine.PayoutQueued {
+		converted.Status = Current
+		return converted, sent
+	}
+	switch p.State {
+	case statemachine.PayoutHeld, statemachine.PayoutCancelled:
+		converted.Status, sent.Status = Skipped, Skipped
+		return converted, sent
+	}
+	converted.Status, converted.At = Done, p.ConvertedAt
+	switch p.State {
+	case statemachine.PayoutSucceeded:
+		sent.Status, sent.At = Done, p.SentAt
+	case statemachine.PayoutUnknown:
+		sent.Status = Checking
+	default: // converted, submitting, submitted, failed (awaiting a retry), reversed
+		sent.Status = Current
+	}
+	return converted, sent
 }
 
 func last(events []Event) string {

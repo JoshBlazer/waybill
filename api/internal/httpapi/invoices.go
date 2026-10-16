@@ -170,6 +170,7 @@ func InvoiceJSON(webURL string, inv invoice.Invoice) Invoice {
 		ExpiresAt:        inv.ExpiresAt.UTC(),
 		CreatedAt:        inv.CreatedAt.UTC(),
 		Quote:            quoteJSON(inv),
+		PayoutStatus:     payoutJSON(inv),
 	}
 }
 

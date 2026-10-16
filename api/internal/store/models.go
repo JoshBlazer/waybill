@@ -213,6 +213,33 @@ type Payment struct {
 	ReorgedAt    *time.Time
 }
 
+type Payout struct {
+	ID           uuid.UUID
+	InvoiceID    uuid.UUID
+	ContractorID uuid.UUID
+	State        string
+	SourceAsset  string
+	SourceAmount money.Amount
+	NairaAmount  money.Amount
+	RateQuoteID  *uuid.UUID
+	Reference    string
+	TransferCode *string
+	Failure      *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type PayoutEvent struct {
+	ID        int64
+	PayoutID  uuid.UUID
+	InvoiceID uuid.UUID
+	Type      string
+	FromState string
+	ToState   string
+	Data      []byte
+	CreatedAt time.Time
+}
+
 type Posting struct {
 	ID        int64
 	EntryID   int64
