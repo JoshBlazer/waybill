@@ -92,6 +92,6 @@ This project is built with an AI coding assistant (Claude Code). Two modules are
 | Module | Status |
 |---|---|
 | Payout state machine | Not yet written (stage 3) |
-| Transaction manager nonce and fee logic | Not yet written (stage 2) |
+| Transaction manager nonce and fee logic | Design note, signatures and failing tests ready ([docs/design/txmgr.md](docs/design/txmgr.md)); implementation not yet written (stage 2) |
 
 To check that its failing tests are correct and satisfiable, the assistant may run them against a throwaway implementation. That code is deleted, never committed and never shown; the committed implementation is the author's. Everything else, including the stage 0 scaffold, is written with the assistant and reviewed by the author. This table is updated whenever one of these modules changes.

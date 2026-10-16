@@ -12,6 +12,11 @@ import (
 )
 
 type Querier interface {
+	// Transaction manager. See docs/design/txmgr.md.
+	// Takes the lease when nobody holds it, renews it for its holder, and takes
+	// it over once it has expired. Returns no row when another process holds a
+	// live lease.
+	AcquireSignerLease(ctx context.Context, arg AcquireSignerLeaseParams) (AcquireSignerLeaseRow, error)
 	// Accounts whose cached balance differs from the sum of their postings.
 	// Must always return no rows.
 	BalanceCacheMismatches(ctx context.Context) ([]BalanceCacheMismatchesRow, error)
@@ -56,11 +61,15 @@ type Querier interface {
 	// Every deposit address on a network, including expired invoices: late
 	// payments are still recorded (docs/RISKS.md §7).
 	ListWatchedAddresses(ctx context.Context, network string) ([]ListWatchedAddressesRow, error)
+	// Locks the key's row until the caller's transaction ends. db_now is the
+	// database clock, so lease checks never depend on the caller's clock.
+	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
 	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
+	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)
 	// Sum of all postings per asset. Every row must be zero.

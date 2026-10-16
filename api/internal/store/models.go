@@ -139,3 +139,11 @@ type Posting struct {
 	AssetCode string
 	Amount    money.Amount
 }
+
+type SignerNonce struct {
+	Signer         string
+	Network        string
+	NextNonce      int64
+	LeaseOwner     string
+	LeaseExpiresAt time.Time
+}
