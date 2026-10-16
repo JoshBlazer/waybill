@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { CreateInvoiceForm } from "./CreateInvoiceForm";
+import { apiBaseUrl, fetchBankAccount } from "@/lib/api/client";
+import { CreateInvoiceForm, type PayoutAccount } from "./CreateInvoiceForm";
 
 export const metadata: Metadata = { title: "New invoice · Waybill" };
 
@@ -38,5 +39,14 @@ export default function NewInvoicePage() {
 // works before (or without) JavaScript.
 async function FreshForm() {
   await connection();
-  return <CreateInvoiceForm idempotencyKey={crypto.randomUUID()} />;
+  let account: PayoutAccount = "unknown";
+  const key = process.env.WAYBILL_DEV_CONTRACTOR_KEY;
+  if (key) {
+    const r = await fetchBankAccount(apiBaseUrl(), key);
+    account =
+      r.kind === "ok" ? r.value : r.kind === "not_found" ? null : "unknown";
+  }
+  return (
+    <CreateInvoiceForm idempotencyKey={crypto.randomUUID()} account={account} />
+  );
 }

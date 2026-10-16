@@ -116,7 +116,12 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: make up
+      - name: Start the stack
+        # The fixed fake naira rate keeps end-to-end runs deterministic and
+        # independent of ExchangeRate-API.
+        env:
+          WAYBILL_RATES: fake
+        run: make up
       - name: API health
         run: curl --fail --silent --show-error http://localhost:8080/v1/health
       - name: Web reaches API

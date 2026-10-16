@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef } from "react";
-import { formatAmountWithAsset } from "@/lib/money";
+import type { BankAccount } from "@/lib/api/client";
+import { formatAmount, formatAmountWithAsset } from "@/lib/money";
+import { formatLagosDate } from "../../account/bank/dates";
 import { createInvoiceAction, type CreateState } from "./actions";
+
+/** The demo contractor's payout account: null when none is saved,
+ *  "unknown" when it could not be loaded. */
+export type PayoutAccount = BankAccount | null | "unknown";
 
 export function CreateInvoiceForm({
   idempotencyKey,
+  account,
 }: {
   idempotencyKey: string;
+  account: PayoutAccount;
 }) {
   const [state, action, pending] = useActionState<CreateState, FormData>(
     createInvoiceAction,
@@ -46,6 +54,17 @@ export function CreateInvoiceForm({
         <p className="font-mono text-2xl">
           {formatAmountWithAsset(inv.amount)}
         </p>
+        {inv.quote && (
+          <p>
+            You&apos;ll receive{" "}
+            <span className="font-mono font-semibold">
+              ₦{formatAmount(inv.quote.nairaAmount)}
+            </span>{" "}
+            at ₦{formatAmount(inv.quote.rate)} per USDC, locked{" "}
+            {formatLagosDate(inv.quote.expiresAt).replace(/^on /, "until ")}.
+            Rate from {inv.quote.source}.
+          </p>
+        )}
         <p>
           Tracking number <span className="font-mono">{inv.trackingCode}</span>
         </p>
@@ -115,10 +134,45 @@ export function CreateInvoiceForm({
           className="min-h-11 border border-ink bg-paper-raised px-3 font-mono"
         />
       </div>
-      <p className="text-sm text-ink-muted">
-        You&apos;ll keep the USDC in your Waybill balance. Naira to your bank
-        arrives in a later version.
-      </p>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-semibold">How do you want to be paid?</legend>
+        <label className="flex min-h-11 items-center gap-3">
+          <input
+            type="radio"
+            name="payout"
+            value="hold"
+            defaultChecked={values?.payout !== "naira"}
+            className="size-5"
+          />
+          Keep the USDC in my Waybill balance
+        </label>
+        <label className="flex min-h-11 items-center gap-3">
+          <input
+            type="radio"
+            name="payout"
+            value="naira"
+            disabled={account === null}
+            defaultChecked={values?.payout === "naira"}
+            aria-describedby="naira-hint"
+            className="size-5"
+          />
+          Naira to my bank, at a rate locked now
+        </label>
+        <p id="naira-hint" className="text-sm text-ink-muted">
+          {account === null ? (
+            <>
+              <Link href="/account/bank" className="underline">
+                Add a bank account
+              </Link>{" "}
+              to be paid in naira.
+            </>
+          ) : account === "unknown" ? (
+            "We couldn't check your bank account just now; naira will work if one is saved."
+          ) : (
+            `Sent to ${account.bankName}, account ending ${account.accountNumberLast4}.`
+          )}
+        </p>
+      </fieldset>
       <button
         type="submit"
         disabled={pending}

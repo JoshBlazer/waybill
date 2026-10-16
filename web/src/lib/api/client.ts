@@ -134,3 +134,67 @@ export async function createInvoice(
 export function apiBaseUrl(): string {
   return process.env.API_INTERNAL_URL ?? "http://localhost:8080";
 }
+
+export type Bank = components["schemas"]["Bank"];
+export type BankAccount = components["schemas"]["BankAccount"];
+export type Quote = components["schemas"]["Quote"];
+
+function authHeaders(apiKey: string): HeadersInit {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
+/** Server-side only. Banks that can receive payouts. */
+export async function fetchBanks(
+  baseUrl: string,
+  apiKey: string,
+): Promise<Lookup<Bank[]>> {
+  const r = await lookup<{ items: Bank[] }>(baseUrl, "/v1/banks", {
+    headers: authHeaders(apiKey),
+    signal: AbortSignal.timeout(10_000),
+  });
+  return r.kind === "ok" ? { kind: "ok", value: r.value.items } : r;
+}
+
+/** Server-side only. The demo contractor's payout account; not_found until
+ *  one is saved. */
+export function fetchBankAccount(baseUrl: string, apiKey: string) {
+  return lookup<BankAccount>(baseUrl, "/v1/me/bank-account", {
+    headers: authHeaders(apiKey),
+    signal: AbortSignal.timeout(10_000),
+  });
+}
+
+export type SaveBankResult =
+  | { kind: "saved"; account: BankAccount }
+  | { kind: "problem"; problem: Problem }
+  | { kind: "unreachable"; reason: string };
+
+/** Server-side only. Verifies the account with the bank and saves it if the
+ *  name matches. Safe to retry: saving the same account again changes
+ *  nothing. */
+export async function saveBankAccount(
+  baseUrl: string,
+  apiKey: string,
+  bankCode: string,
+  accountNumber: string,
+): Promise<SaveBankResult> {
+  let res: Response;
+  try {
+    res = await fetch(new URL("/v1/me/bank-account", baseUrl), {
+      method: "PUT",
+      cache: "no-store",
+      headers: { ...authHeaders(apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({ bankCode, accountNumber }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return { kind: "unreachable", reason: "network error" };
+  }
+  if (res.status === 200) {
+    return { kind: "saved", account: (await res.json()) as BankAccount };
+  }
+  if (res.headers.get("content-type")?.includes("json")) {
+    return { kind: "problem", problem: (await res.json()) as Problem };
+  }
+  return { kind: "unreachable", reason: `HTTP ${res.status}` };
+}
