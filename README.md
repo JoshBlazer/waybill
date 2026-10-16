@@ -32,7 +32,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Reorg handling: detect by block hash, walk back to the common ancestor, reverse confirmed payments, rescan | Done (stage 2) | `go test ./internal/watcher` (fake-chain reorg tests; `TestWatcher_ReorgReversesConfirmedPayment` forces a reorg on Anvil with `evm_snapshot`/`evm_revert`) |
 | Payment edge cases: payments in parts, top-ups, overpayment, paying twice, payment after settlement, invoice expiry and late payment | Done (stage 2) | `go test ./internal/watcher` (`edge_test.go`) |
 | Transaction manager nonce and fee logic (hand-written) | Design note, signatures and failing tests ready; awaiting implementation | [PR #7](../../pull/7) |
-| Transaction manager plumbing, sweeping, batch payouts, webhooks | Not started (stage 2) | — |
+| `BatchPayout` contract: all-or-nothing batches through the vault's payout-id guard and limits | Done (stage 2); deployed with the payout plumbing | `make test-contracts` (10 unit tests, 4 invariants) |
+| Transaction manager plumbing, sweeping, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
 | Ethereum Sepolia, Bitcoin, RPC failover, observability | Not started (stage 5) | — |
