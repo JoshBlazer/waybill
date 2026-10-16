@@ -28,7 +28,9 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Accessibility (axe, WCAG 2.1 AA) on every thin-slice page and state | Done (stage 1) | `make e2e` → `e2e/accessibility.spec.ts` |
 | Performance budgets (Lighthouse CI: LCP, TBT, CLS, transfer) | Done (stage 1); budgets set from CI measurement (ADR-036) | `make lighthouse` |
 | Base Sepolia: contracts deployed, one invoice paid and settled | Done (stage 1) | [Testnet deployments](#testnet-deployments) |
-| Reorgs, stuck transactions, payment edge cases, vault, webhooks | Not started (stage 2) | — |
+| **Stage 2 — Hardening** | In progress | [roadmap](docs/ROADMAP.md#stage-2--hardening) |
+| Reorg handling: detect by block hash, walk back to the common ancestor, reverse confirmed payments, rescan | Done (stage 2) | `go test ./internal/watcher` (fake-chain reorg tests; `TestWatcher_ReorgReversesConfirmedPayment` forces a reorg on Anvil with `evm_snapshot`/`evm_revert`) |
+| Stuck transactions, payment edge cases, sweeping, batch payouts, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
 | Ethereum Sepolia, Bitcoin, RPC failover, observability | Not started (stage 5) | — |

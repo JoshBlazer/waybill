@@ -1,16 +1,20 @@
 // Package watcher follows an EVM chain and turns token transfers into
 // payments: detected, then confirmed after N blocks, then final after M
-// blocks (invariant I8). Stage 1 version: reorgs are not yet reversed (that
-// is stage 2), but a payment whose block hash has changed is never
-// confirmed, and an RPC failure never advances anything (invariant I12).
+// blocks (invariant I8). Before each scan it checks that the blocks it has
+// already read are still on the canonical chain; if they are not, it walks
+// back to the common ancestor, marks payments in replaced blocks reorged,
+// reverses their ledger entries and rescans. An RPC failure never advances
+// or rewinds anything (invariant I12).
 package watcher
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,12 +63,25 @@ type Config struct {
 	PollInterval time.Duration
 }
 
+// keepBlocks is how far below the newest scanned block the watcher keeps
+// block hashes for finding a common ancestor. It is far deeper than
+// finality on every supported network.
+const keepBlocks = 4096
+
 // Watcher follows one network.
 type Watcher struct {
 	Pool  *pgxpool.Pool
 	Chain Chain
 	Cfg   Config
 	Log   *slog.Logger
+	Now   func() time.Time // nil means time.Now
+}
+
+func (w *Watcher) now() time.Time {
+	if w.Now != nil {
+		return w.Now()
+	}
+	return time.Now()
 }
 
 // Run polls until ctx is done. Each tick is independent: a failed tick is
@@ -84,12 +101,15 @@ func (w *Watcher) Run(ctx context.Context) error {
 	}
 }
 
-// Tick scans new blocks for payments, then advances payments that have
-// enough confirmations.
+// Tick undoes any reorg of blocks already read, scans new blocks for
+// payments, then advances payments that have enough confirmations.
 func (w *Watcher) Tick(ctx context.Context) error {
 	head, err := w.Chain.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("head: %w", err) // unknown, not "nothing happened"
+	}
+	if err := w.checkReorg(ctx, head); err != nil {
+		return fmt.Errorf("reorg check: %w", err)
 	}
 	if err := w.scan(ctx, head); err != nil {
 		return fmt.Errorf("scan: %w", err)
@@ -113,15 +133,41 @@ func (w *Watcher) scan(ctx context.Context, head uint64) error {
 	}
 	for from <= head {
 		to := min(head, from+w.Cfg.BatchBlocks-1)
+		// Read the range's last block before its logs. If a reorg lands
+		// between the two calls, the stored hash is the old one and the next
+		// tick rewinds and reads the range again.
+		toHash, err := w.blockHash(ctx, to)
+		if err != nil {
+			return err
+		}
 		if err := w.scanRange(ctx, from, to); err != nil {
 			return err // cursor stays at `from`
 		}
-		if err := q.SetChainCursor(ctx, store.SetChainCursorParams{Network: string(w.Cfg.Network), NextBlock: int64(to + 1)}); err != nil { //nolint:gosec // block numbers are far below 2^63
+		if err := w.recordScanned(ctx, to, toHash); err != nil {
 			return err
 		}
 		from = to + 1
 	}
 	return nil
+}
+
+// recordScanned stores the range's last block hash and moves the cursor
+// past it, in one transaction.
+func (w *Watcher) recordScanned(ctx context.Context, to uint64, hash string) error {
+	net := string(w.Cfg.Network)
+	height := int64(to) //nolint:gosec // block numbers are far below 2^63
+	return pgx.BeginFunc(ctx, w.Pool, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		if err := q.PutChainBlock(ctx, store.PutChainBlockParams{Network: net, Height: height, Hash: hash}); err != nil {
+			return err
+		}
+		if height > keepBlocks {
+			if err := q.PruneChainBlocks(ctx, store.PruneChainBlocksParams{Network: net, Height: height - keepBlocks}); err != nil {
+				return err
+			}
+		}
+		return q.SetChainCursor(ctx, store.SetChainCursorParams{Network: net, NextBlock: height + 1})
+	})
 }
 
 func (w *Watcher) scanRange(ctx context.Context, from, to uint64) error {
@@ -259,15 +305,240 @@ func (w *Watcher) advance(ctx context.Context, head uint64) error {
 	return nil
 }
 
-var errBlockReplaced = errors.New("block at the payment's height has a different hash (reorg); handled in stage 2")
+var errBlockReplaced = errors.New("block at the payment's height has a different hash (reorg); the next tick rewinds")
 
 func (w *Watcher) stillCanonical(ctx context.Context, p store.Payment) error {
-	h, err := w.Chain.HeaderByNumber(ctx, big.NewInt(p.BlockNumber))
+	h, err := w.blockHash(ctx, uint64(p.BlockNumber)) //nolint:gosec // block numbers are non-negative
 	if err != nil {
 		return fmt.Errorf("could not check block: %w", err) // unknown: do nothing
 	}
-	if lowerHex(h.Hash().Hex()) != p.BlockHash {
+	if h != p.BlockHash {
 		return errBlockReplaced
+	}
+	return nil
+}
+
+func (w *Watcher) blockHash(ctx context.Context, height uint64) (string, error) {
+	h, err := w.Chain.HeaderByNumber(ctx, new(big.Int).SetUint64(height))
+	if err != nil {
+		return "", fmt.Errorf("header %d: %w", height, err)
+	}
+	return lowerHex(h.Hash().Hex()), nil
+}
+
+// errNodeBehind: the node's head is below a block already scanned. Chains
+// replace blocks rather than shrink, so this is a lagging or misconfigured
+// node, and the safe answer is to wait.
+var errNodeBehind = errors.New("node head is below blocks already scanned")
+
+// checkReorg compares the newest scanned block and the blocks of open
+// payments with the node's chain. On a mismatch it finds the common ancestor
+// and rewinds to it. Any RPC error leaves everything as it was.
+func (w *Watcher) checkReorg(ctx context.Context, head uint64) error {
+	q := store.New(w.Pool)
+	net := string(w.Cfg.Network)
+	tip, err := q.GetChainTip(ctx, net)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // nothing scanned yet
+	}
+	if err != nil {
+		return err
+	}
+	if uint64(tip.Height) > head { //nolint:gosec // non-negative
+		return fmt.Errorf("%w: head %d, scanned to %d", errNodeBehind, head, tip.Height)
+	}
+	open, err := q.ListOpenPayments(ctx, net)
+	if err != nil {
+		return err
+	}
+	type seen struct {
+		height uint64
+		hash   string
+	}
+	checks := []seen{{uint64(tip.Height), tip.Hash}} //nolint:gosec // non-negative
+	for _, p := range open {
+		checks = append(checks, seen{uint64(p.BlockNumber), p.BlockHash}) //nolint:gosec // non-negative
+	}
+	// Lowest first, so the rewind starts at the deepest replaced block.
+	slices.SortFunc(checks, func(a, b seen) int { return cmp.Compare(a.height, b.height) })
+	for _, c := range checks {
+		got, err := w.blockHash(ctx, c.height)
+		if err != nil {
+			return err
+		}
+		if got != c.hash {
+			next, err := w.ancestorNext(ctx, c.height)
+			if err != nil {
+				return err
+			}
+			return w.rewind(ctx, next, c.height)
+		}
+	}
+	return nil
+}
+
+// ancestorNext walks the stored blocks below the replaced height, newest
+// first, and returns the block after the first one that still matches. With
+// no match (a reorg deeper than the stored history) it rescans from the
+// deployment's start block: slow, but rescanning is always safe.
+func (w *Watcher) ancestorNext(ctx context.Context, replaced uint64) (uint64, error) {
+	below, err := store.New(w.Pool).ListChainBlocksBelow(ctx, store.ListChainBlocksBelowParams{
+		Network: string(w.Cfg.Network), Height: int64(replaced), //nolint:gosec // block numbers are far below 2^63
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, b := range below {
+		got, err := w.blockHash(ctx, uint64(b.Height)) //nolint:gosec // non-negative
+		if err != nil {
+			return 0, err
+		}
+		if got == b.Hash {
+			return uint64(b.Height) + 1, nil //nolint:gosec // non-negative
+		}
+	}
+	w.Log.Error("watcher: no stored block matches the chain; rescanning from the start block", "network", w.Cfg.Network, "replaced", replaced)
+	return w.Cfg.StartBlock, nil
+}
+
+// rewind undoes everything read from blocks at or above next that are no
+// longer canonical, in one transaction: payments in replaced blocks become
+// reorged, confirmed ones have their ledger entry reversed, their invoices
+// re-derive their state from the payments that remain, and the cursor moves
+// back so the next scan reads those blocks again. Final payments are never
+// touched: a reorg below finality is an alert, not a correction.
+func (w *Watcher) rewind(ctx context.Context, next, replaced uint64) error {
+	net := string(w.Cfg.Network)
+	open, err := store.New(w.Pool).ListOpenPayments(ctx, net)
+	if err != nil {
+		return err
+	}
+	// Every RPC call happens before the transaction: an error here changes
+	// nothing.
+	var gone []store.Payment
+	for _, p := range open {
+		if uint64(p.BlockNumber) < next { //nolint:gosec // non-negative
+			continue
+		}
+		h, err := w.blockHash(ctx, uint64(p.BlockNumber)) //nolint:gosec // non-negative
+		if err != nil {
+			return err
+		}
+		if h != p.BlockHash {
+			gone = append(gone, p)
+		}
+	}
+	err = pgx.BeginFunc(ctx, w.Pool, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		byInvoice := map[uuid.UUID][]uuid.UUID{}
+		var order []uuid.UUID
+		for _, p := range gone {
+			n, err := q.MarkPaymentReorged(ctx, p.ID)
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				continue // moved on since it was listed; nothing to undo
+			}
+			if p.State == "confirmed" {
+				if err := reverseConfirmation(ctx, tx, p); err != nil {
+					return err
+				}
+			}
+			if _, ok := byInvoice[p.InvoiceID]; !ok {
+				order = append(order, p.InvoiceID)
+			}
+			byInvoice[p.InvoiceID] = append(byInvoice[p.InvoiceID], p.ID)
+		}
+		for _, id := range order {
+			if err := w.rederive(ctx, tx, id, byInvoice[id]); err != nil {
+				return fmt.Errorf("invoice %s: %w", id, err)
+			}
+		}
+		height := int64(next) //nolint:gosec // block numbers are far below 2^63
+		if err := q.DeleteChainBlocksFrom(ctx, store.DeleteChainBlocksFromParams{Network: net, Height: height}); err != nil {
+			return err
+		}
+		return q.SetChainCursor(ctx, store.SetChainCursorParams{Network: net, NextBlock: height})
+	})
+	if err != nil {
+		return err
+	}
+	w.Log.Warn("watcher: reorg; rewound", "network", w.Cfg.Network, "replaced", replaced, "rescanFrom", next, "paymentsReorged", len(gone))
+	return nil
+}
+
+// reverseConfirmation reverses a payment's deposit.confirmed entry: custody
+// and the contractor's pending balance both go back down.
+func reverseConfirmation(ctx context.Context, tx pgx.Tx, p store.Payment) error {
+	e, err := store.New(tx).GetJournalEntryByIdempotencyKey(ctx, "payment:"+p.ID.String()+":confirmed")
+	if err != nil {
+		return fmt.Errorf("find confirmation of %s: %w", p.ID, err)
+	}
+	_, err = ledger.Reverse(ctx, tx, ledger.EntryID(e.ID), "payment:"+p.ID.String()+":reorged",
+		"block "+p.BlockHash+" left the canonical chain")
+	if err != nil {
+		return fmt.Errorf("ledger: %w", err)
+	}
+	return nil
+}
+
+// rederive returns the invoice to open, then replays detection and
+// confirmation for the payments that are still there, so its state comes
+// from what is on the chain rather than from guessing which payment went.
+// An invoice past its expiry with nothing left is expired again.
+func (w *Watcher) rederive(ctx context.Context, tx pgx.Tx, id uuid.UUID, reorged []uuid.UUID) error {
+	st, err := invoice.Apply(ctx, tx, id, statemachine.EvPaymentReorged, map[string]any{"paymentIds": reorged})
+	if errors.Is(err, statemachine.ErrIllegalTransition) {
+		// Settled, or another state a reorg cannot reach: finality was
+		// violated or the invoice was closed. Leave it for a person.
+		w.Log.Error("watcher: reorg reached an invoice that cannot reopen", "invoice", id, "state", st, "payments", reorged)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	replay := func(ev statemachine.InvoiceEvent, data map[string]any) error {
+		data["replay"] = true
+		next, err := invoice.Apply(ctx, tx, id, ev, data)
+		if errors.Is(err, statemachine.ErrIllegalTransition) {
+			w.Log.Warn("watcher: replay after reorg stopped", "invoice", id, "event", ev, "err", err)
+			return nil
+		}
+		st = next
+		return err
+	}
+	q := store.New(tx)
+	inv, err := q.GetInvoiceForUpdate(ctx, id)
+	if err != nil {
+		return err
+	}
+	live, err := q.ListLivePaymentsByInvoice(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(live) == 0 {
+		if !w.now().Before(inv.ExpiresAt) {
+			return replay(statemachine.EvExpire, map[string]any{})
+		}
+		return nil
+	}
+	if err := replay(statemachine.EvPaymentDetected, map[string]any{"paymentId": live[0].ID}); err != nil {
+		return err
+	}
+	total, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: id, States: []string{"confirmed", "final"}})
+	if err != nil {
+		return err
+	}
+	if total.IsZero() {
+		return nil
+	}
+	if err := replay(statemachine.ClassifyConfirmation(total, inv.Amount), map[string]any{"confirmedTotal": total.String()}); err != nil {
+		return err
+	}
+	allFinal := !slices.ContainsFunc(live, func(p store.Payment) bool { return p.State != "final" })
+	if allFinal && (st == statemachine.InvoiceConfirmed || st == statemachine.InvoiceOverpaid) {
+		return replay(statemachine.EvPaymentFinal, map[string]any{})
 	}
 	return nil
 }

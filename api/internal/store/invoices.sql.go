@@ -60,6 +60,20 @@ func (q *Queries) CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempo
 	return err
 }
 
+const deleteChainBlocksFrom = `-- name: DeleteChainBlocksFrom :exec
+DELETE FROM chain_blocks WHERE network = $1 AND height >= $2
+`
+
+type DeleteChainBlocksFromParams struct {
+	Network string
+	Height  int64
+}
+
+func (q *Queries) DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBlocksFromParams) error {
+	_, err := q.db.Exec(ctx, deleteChainBlocksFrom, arg.Network, arg.Height)
+	return err
+}
+
 const getActiveAPIKey = `-- name: GetActiveAPIKey :one
 SELECT k.contractor_id, k.secret_sha256
 FROM api_keys k
@@ -87,6 +101,22 @@ func (q *Queries) GetChainCursor(ctx context.Context, network string) (int64, er
 	var next_block int64
 	err := row.Scan(&next_block)
 	return next_block, err
+}
+
+const getChainTip = `-- name: GetChainTip :one
+SELECT height, hash FROM chain_blocks WHERE network = $1 ORDER BY height DESC LIMIT 1
+`
+
+type GetChainTipRow struct {
+	Height int64
+	Hash   string
+}
+
+func (q *Queries) GetChainTip(ctx context.Context, network string) (GetChainTipRow, error) {
+	row := q.db.QueryRow(ctx, getChainTip, network)
+	var i GetChainTipRow
+	err := row.Scan(&i.Height, &i.Hash)
+	return i, err
 }
 
 const getContractor = `-- name: GetContractor :one
@@ -318,8 +348,8 @@ INSERT INTO payments (network, tx_hash, log_index, block_number, block_hash, tok
                       from_address, to_address, invoice_id, asset_code, amount)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11)
-ON CONFLICT (network, tx_hash, log_index) DO NOTHING
-RETURNING id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at
+ON CONFLICT (network, tx_hash, log_index) WHERE state <> 'reorged' DO NOTHING
+RETURNING id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at
 `
 
 type InsertPaymentParams struct {
@@ -369,6 +399,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (P
 		&i.DetectedAt,
 		&i.ConfirmedAt,
 		&i.FinalAt,
+		&i.ReorgedAt,
 	)
 	return i, err
 }
@@ -382,6 +413,41 @@ func (q *Queries) LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const listChainBlocksBelow = `-- name: ListChainBlocksBelow :many
+SELECT height, hash FROM chain_blocks WHERE network = $1 AND height < $2 ORDER BY height DESC
+`
+
+type ListChainBlocksBelowParams struct {
+	Network string
+	Height  int64
+}
+
+type ListChainBlocksBelowRow struct {
+	Height int64
+	Hash   string
+}
+
+// Newest first: the walk back to the common ancestor stops at the first match.
+func (q *Queries) ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error) {
+	rows, err := q.db.Query(ctx, listChainBlocksBelow, arg.Network, arg.Height)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListChainBlocksBelowRow
+	for rows.Next() {
+		var i ListChainBlocksBelowRow
+		if err := rows.Scan(&i.Height, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listChainTokens = `-- name: ListChainTokens :many
@@ -469,8 +535,50 @@ func (q *Queries) ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([
 	return items, nil
 }
 
+const listLivePaymentsByInvoice = `-- name: ListLivePaymentsByInvoice :many
+SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at FROM payments WHERE invoice_id = $1 AND state <> 'reorged' ORDER BY block_number, log_index
+`
+
+func (q *Queries) ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error) {
+	rows, err := q.db.Query(ctx, listLivePaymentsByInvoice, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Payment
+	for rows.Next() {
+		var i Payment
+		if err := rows.Scan(
+			&i.ID,
+			&i.Network,
+			&i.TxHash,
+			&i.LogIndex,
+			&i.BlockNumber,
+			&i.BlockHash,
+			&i.TokenAddress,
+			&i.FromAddress,
+			&i.ToAddress,
+			&i.InvoiceID,
+			&i.AssetCode,
+			&i.Amount,
+			&i.State,
+			&i.DetectedAt,
+			&i.ConfirmedAt,
+			&i.FinalAt,
+			&i.ReorgedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenPayments = `-- name: ListOpenPayments :many
-SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at FROM payments WHERE network = $1 AND state IN ('detected', 'confirmed') ORDER BY block_number, log_index
+SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at FROM payments WHERE network = $1 AND state IN ('detected', 'confirmed') ORDER BY block_number, log_index
 `
 
 func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payment, error) {
@@ -499,6 +607,7 @@ func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payme
 			&i.DetectedAt,
 			&i.ConfirmedAt,
 			&i.FinalAt,
+			&i.ReorgedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -558,6 +667,48 @@ UPDATE payments SET state = 'final', final_at = now() WHERE id = $1 AND state = 
 
 func (q *Queries) MarkPaymentFinal(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markPaymentFinal, id)
+	return err
+}
+
+const markPaymentReorged = `-- name: MarkPaymentReorged :execrows
+UPDATE payments SET state = 'reorged', reorged_at = now() WHERE id = $1 AND state IN ('detected', 'confirmed')
+`
+
+func (q *Queries) MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markPaymentReorged, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const pruneChainBlocks = `-- name: PruneChainBlocks :exec
+DELETE FROM chain_blocks WHERE network = $1 AND height < $2
+`
+
+type PruneChainBlocksParams struct {
+	Network string
+	Height  int64
+}
+
+func (q *Queries) PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error {
+	_, err := q.db.Exec(ctx, pruneChainBlocks, arg.Network, arg.Height)
+	return err
+}
+
+const putChainBlock = `-- name: PutChainBlock :exec
+INSERT INTO chain_blocks (network, height, hash) VALUES ($1, $2, $3)
+ON CONFLICT (network, height) DO UPDATE SET hash = EXCLUDED.hash
+`
+
+type PutChainBlockParams struct {
+	Network string
+	Height  int64
+	Hash    string
+}
+
+func (q *Queries) PutChainBlock(ctx context.Context, arg PutChainBlockParams) error {
+	_, err := q.db.Exec(ctx, putChainBlock, arg.Network, arg.Height, arg.Hash)
 	return err
 }
 

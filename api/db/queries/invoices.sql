@@ -78,7 +78,7 @@ INSERT INTO payments (network, tx_hash, log_index, block_number, block_hash, tok
                       from_address, to_address, invoice_id, asset_code, amount)
 VALUES (@network, @tx_hash, @log_index, @block_number, @block_hash, @token_address,
         @from_address, @to_address, @invoice_id, @asset_code, @amount)
-ON CONFLICT (network, tx_hash, log_index) DO NOTHING
+ON CONFLICT (network, tx_hash, log_index) WHERE state <> 'reorged' DO NOTHING
 RETURNING *;
 
 -- name: ListOpenPayments :many
@@ -96,6 +96,29 @@ SELECT coalesce(sum(amount), 0)::minor_units AS total
 FROM payments
 WHERE invoice_id = @invoice_id
   AND state = ANY(@states::text[]);
+
+-- name: MarkPaymentReorged :execrows
+UPDATE payments SET state = 'reorged', reorged_at = now() WHERE id = @id AND state IN ('detected', 'confirmed');
+
+-- name: ListLivePaymentsByInvoice :many
+SELECT * FROM payments WHERE invoice_id = @invoice_id AND state <> 'reorged' ORDER BY block_number, log_index;
+
+-- name: GetChainTip :one
+SELECT height, hash FROM chain_blocks WHERE network = @network ORDER BY height DESC LIMIT 1;
+
+-- name: ListChainBlocksBelow :many
+-- Newest first: the walk back to the common ancestor stops at the first match.
+SELECT height, hash FROM chain_blocks WHERE network = @network AND height < @height ORDER BY height DESC;
+
+-- name: PutChainBlock :exec
+INSERT INTO chain_blocks (network, height, hash) VALUES (@network, @height, @hash)
+ON CONFLICT (network, height) DO UPDATE SET hash = EXCLUDED.hash;
+
+-- name: DeleteChainBlocksFrom :exec
+DELETE FROM chain_blocks WHERE network = @network AND height >= @height;
+
+-- name: PruneChainBlocks :exec
+DELETE FROM chain_blocks WHERE network = @network AND height < @height;
 
 -- name: GetChainCursor :one
 SELECT next_block FROM chain_cursors WHERE network = @network;
