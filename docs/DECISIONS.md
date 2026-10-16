@@ -277,3 +277,4 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - The ledger gains NGN accounts (clearing, FX position, provider float). The ledger schema is unchanged.
 - Payout reference = payout id, so Paystack itself refuses a duplicate.
 - Account numbers are shown only as their last four digits after saving.
+- Checkout: Paystack requires a payer email and payers have no accounts, so checkouts send `pay-<tracking code>@example.com` (test mode accepts any address). A live deployment would ask the payer.

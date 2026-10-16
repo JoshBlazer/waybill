@@ -124,6 +124,14 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 	}
 	log.Info("worker started", "owner", owner, "topics", len(w.Handlers))
 
+	nr, err := setupNaira(cfg, log)
+	if err != nil {
+		return err
+	}
+	if nr.charger != nil {
+		co := nr.checkout(pool, tokens, cfg.WebURL, log)
+		run(func() { co.Run(ctx, 15*time.Second) })
+	}
 	run(func() { w.Run(ctx, time.Second) })
 	run(func() { invoice.RunExpiry(ctx, pool, 30*time.Second, log) })
 	wg.Wait()
