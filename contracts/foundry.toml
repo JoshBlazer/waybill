@@ -20,5 +20,13 @@ runs = 256
 [profile.ci.fuzz]
 runs = 2000
 
+[profile.default.invariant]
+runs = 64
+depth = 100
+
+[profile.ci.invariant]
+runs = 256
+depth = 100
+
 [fmt]
 line_length = 100

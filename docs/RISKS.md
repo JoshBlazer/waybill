@@ -31,7 +31,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | A worker crashes after calling the provider but before recording it. | The provider reference equals our payout id, so the provider rejects the duplicate. The `unknown` state reconciles before any resend. | `TestPayout_CrashAfterSubmitDoesNotDoublePay` *(stage 3)* |
 | A webhook is replayed. | Unique `(provider, event_id)`, processed once. | I14 tests *(stage 3)* |
 | A replaced EVM transaction and the original both mine. | Both share one nonce, so only one can mine. Every hash is watched. | I10/I11 tests *(stage 2)* |
-| A batch payout is resubmitted. | `Vault.payout` rejects a reused payout id on-chain, whichever contract calls it. | `test_RevertWhen_PayoutIdReused` *(exists)*; batch path *(stage 2)* |
+| A batch payout is resubmitted. | `Vault.payout` rejects a reused payout id on-chain, whichever contract calls it. | `test_RevertWhen_PayoutIdReused`, `test_RevertWhen_PayoutIdReusedAcrossBatches`, `test_RevertWhen_BatchResubmitted`, `invariant_PayoutIdPaidAtMostOnce` *(exist)* |
 | The same deposit log is processed twice. | Unique `(network, tx_hash, log_index)`. | I9 test *(stage 1)* |
 
 ## 4. Crediting money that is not there
@@ -70,7 +70,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | Risk | Guard | Proof |
 |---|---|---|
 | A transaction is stuck with a low fee. | Replacement with bumped fees. | I11 test *(stage 2)* |
-| Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted and re-quoted. | `TestInvoice_LatePaymentAccepted` *(stage 2)* |
-| Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths. | Underpaid tests *(stage 2–3)* |
+| Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted (re-quoting comes with rates in stage 3). | `TestInvoice_LatePaymentAccepted` *(exists)* |
+| Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths; the short amount is credited to the contractor at finality, and a top-up moves the invoice on. The contractor's "accept shortfall" action is stage 3. | `TestWatcher_UnderpaidStaysUnderpaidAtFinality`, `TestWatcher_UnderpaidThenTopUp`, `TestWatcher_TwoPartPaymentIsConfirmedNotStuckUnderpaid` *(exist)* |
 | A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_UnknownIsReconciled` *(stage 3)* |
 | Funds sent on the wrong network to the right address. | CREATE2 addresses are reproducible on any network where the factory is deployed at the same address; recovery is documented. | Runbook *(stage 6)* |

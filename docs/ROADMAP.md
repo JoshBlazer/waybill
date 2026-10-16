@@ -49,9 +49,9 @@ Build the whole path end to end before deepening any part of it.
 - [ ] **[H] Transaction manager nonce and fee logic.** The assistant provides: a design note, signatures (`txmgr.NextNonce`, `txmgr.Replacement`, …) and failing tests for I10 and I11, including `rapid` properties.
 - [ ] Transaction manager plumbing: single-writer lease, broadcast, attempt recording, receipt watching.
 - [ ] Gas estimation failure handling.
-- [ ] Underpaid, overpaid, late and duplicate payments.
+- [x] Underpaid, overpaid, late and duplicate payments.
 - [ ] Sweeping to the vault; vault limits and pause.
-- [ ] `BatchPayout` contract with the payout-id guard; Foundry invariant tests.
+- [x] `BatchPayout` contract with the payout-id guard; Foundry invariant tests.
 - [ ] Public API keys, and outgoing webhooks with signature, retries and delivery log.
 
 **Exit check:** for each failure listed above, a test forces it and passes. The command runs in CI.

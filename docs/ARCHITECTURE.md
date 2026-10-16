@@ -157,6 +157,9 @@ stateDiagram-v2
   underpaid --> confirmed: UnderpaymentAccepted
   confirmed --> settled: PaymentFinal
   overpaid --> settled: PaymentFinal
+  confirmed --> confirmed: PaymentDetected (paid again)
+  confirmed --> overpaid: ConfirmedOver
+  overpaid --> overpaid: PaymentDetected, ConfirmedOver
   expired --> received: PaymentDetected (late; rate re-quoted)
   received --> open: PaymentReorged
   underpaid --> open: PaymentReorged
@@ -224,7 +227,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff` *(stage 2)* |
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce` *(stage 3)* |
 | I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `secret.String` redacts in `String()`/`LogValue()`; `Signer` interface; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(stage 1)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
-| I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant test `invariant_VaultOutflowEqualsRecordedPayouts` *(stage 2)* |
+| I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant tests `invariant_VaultOutflowEqualsRecordedPayouts`, `invariant_PayoutIdPaidAtMostOnce`, `invariant_DailyTotalWithinLimit`, `invariant_BatchesAllOrNothing` in `contracts/test/BatchPayout.invariant.t.sol` *(exist)* |
 | I17 | **Approver ≠ creator for runs over threshold.** | SQL `CHECK` plus API check | `TestBatch_SelfApprovalRejected` *(stage 4)* |
 | I18 | **Reserves ≥ liabilities.** | Reconciliation job; proof-of-reserves page | `TestReconcile_DetectsShortfall` *(stage 4)* |
 | I19 | **The API contract cannot drift.** | Generated Go and TS types; `make lint` fails on uncommitted codegen diff | CI job `codegen` *(stage 0, exists)* |
@@ -254,7 +257,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | `DepositForwarder` | Implementation behind every deposit address. `vault` and `factory` are immutables in its code, so EIP-1167 clones need no initialiser and nothing in a clone's storage can redirect funds. `sweep(token)` moves the full balance to the vault, factory only. | Built |
 | `ForwarderFactory` | `predict(salt)` gives the CREATE2 address before deployment, with `salt = keccak256(invoiceId)`. `deployAndSweep(salt, token)` (`SWEEPER_ROLE` only) deploys the clone if needed and sweeps it. Events are emitted before any state-changing external call, and the sweep must move exactly the announced amount (`SweepMismatch`). | Built |
 | `Vault` | `AccessControl` roles (`PAYOUT`, `PAUSER`, admin), per-token per-transaction and per-UTC-day limits, `Pausable`. Limits fail closed: a token with no limits cannot be paid out. Only the admin can unpause. `payout(token, to, amount, payoutId)` rejects a reused payout id, so a payout id moves money at most once regardless of the caller (I16). | Built (stage 2 adds invariant tests) |
-| `BatchPayout` | Pays N recipients from the vault in one transaction, one event per payout id. | Stage 2 |
+| `BatchPayout` | Pays up to 200 recipients from the vault in one transaction. Every item goes through `Vault.payout`, so the payout-id guard, limits and pause apply to each; any failing item reverts the whole batch, and a batch id is used once. Needs the vault's `PAYOUT_ROLE`; callers need `BATCHER_ROLE`. | Built (stage 2); not yet in `Deploy.s.sol`, which gains it with the payout plumbing |
 
 Deployment: `contracts/script/Deploy.s.sol` deploys the token, vault and factory and grants the broadcaster every operational role. That is acceptable on test networks only.
 
@@ -276,8 +279,8 @@ Runs first in `api`, `worker` and `watcher`.
 | RPC down or erroring | Error result | Cursor does not advance. State is `unknown`, never "not paid". Failover to the next RPC *(stage 5)*. |
 | Stuck transaction (fee too low) | Not mined after N blocks | Replace at the same nonce with both fees bumped. Record the new hash and watch all hashes. |
 | Gas estimation fails | Estimation error | Do not broadcast. Mark the attempt and alert. A revert reason is recorded when available. |
-| Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. Overpayment is credited and shown on the receipt. |
-| Late payment | Payment after `expires_at` | Accepted into `expired → received`. The rate is re-quoted; it is never silently dropped. |
+| Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. The amount is classified only once no payment to the invoice is still unconfirmed, so a payment in parts is not mistaken for an underpayment. Overpayment, including paying twice, is credited in full and shown on the receipt. Money arriving after `settled` is recorded and credited; the invoice stays settled. |
+| Late payment | Payment after `expires_at` | Open invoices past `expires_at` are expired every 30 s (`invoice.RunExpiry`, in the watcher process until the outbox worker exists). A later payment is accepted into `expired → received` and never silently dropped; re-quoting comes with rates in stage 3. |
 | Duplicate payment sighting | Unique constraint | No-op. |
 | Provider timeout on payout | Timeout or 5xx | Payout → `unknown`. The reconciler queries by reference, and the payout is never resubmitted blind. |
 | Webhook replay or forgery | Signature and event-id uniqueness | Forged events are rejected. Replays are stored once and processed once. |

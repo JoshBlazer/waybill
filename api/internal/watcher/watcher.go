@@ -246,8 +246,9 @@ func (w *Watcher) recordPayment(ctx context.Context, l types.Log, invoiceID uuid
 			"paymentId": p.ID, "txHash": p.TxHash, "amount": amount.String(),
 		})
 		if errors.Is(err, statemachine.ErrIllegalTransition) {
-			// For example, money arriving after confirmation. The payment is
-			// recorded; resolving it is stage 2 (over- and late payments).
+			// A settled or cancelled invoice cannot move. The payment is still
+			// recorded, and confirmed and credited like any other: money that
+			// arrives is never dropped.
 			w.Log.Warn("watcher: payment recorded but invoice state unchanged", "invoice", invoiceID, "err", err)
 			return nil
 		}
@@ -570,6 +571,16 @@ func (w *Watcher) confirm(ctx context.Context, tx pgx.Tx, p store.Payment) error
 	}); err != nil {
 		return fmt.Errorf("ledger: %w", err)
 	}
+	// With another payment still unconfirmed the total is not known yet:
+	// classifying now would call a two-part payment underpaid and then have
+	// no legal way to count the second part. Wait for it.
+	unconfirmed, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: inv.ID, States: []string{"detected"}})
+	if err != nil {
+		return err
+	}
+	if !unconfirmed.IsZero() {
+		return nil
+	}
 	total, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: inv.ID, States: []string{"confirmed", "final"}})
 	if err != nil {
 		return err
@@ -611,12 +622,17 @@ func (w *Watcher) finalize(ctx context.Context, tx pgx.Tx, p store.Payment) erro
 	}); err != nil {
 		return fmt.Errorf("ledger: %w", err)
 	}
-	stillConfirmed, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: inv.ID, States: []string{"confirmed"}})
+	notFinal, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: inv.ID, States: []string{"detected", "confirmed"}})
 	if err != nil {
 		return err
 	}
-	if !stillConfirmed.IsZero() {
+	if !notFinal.IsZero() {
 		return nil // other payments are not final yet
+	}
+	if statemachine.InvoiceState(inv.State) == statemachine.InvoiceUnderpaid {
+		// Final, credited, and short: the contractor accepts the shortfall
+		// or the payer tops up. Nothing to settle yet.
+		return nil
 	}
 	_, err = invoice.Apply(ctx, tx, inv.ID, statemachine.EvPaymentFinal, map[string]any{"paymentId": p.ID})
 	if errors.Is(err, statemachine.ErrIllegalTransition) {

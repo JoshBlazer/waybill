@@ -89,11 +89,15 @@ var invoiceTransitions = map[invoiceKey]InvoiceState{
 	{InvoiceUnderpaid, EvUnderpaymentAccepted}: InvoiceConfirmed,
 	{InvoiceUnderpaid, EvPaymentReorged}:       InvoiceOpen,
 
-	{InvoiceOverpaid, EvPaymentFinal}:   InvoiceSettled,
-	{InvoiceOverpaid, EvPaymentReorged}: InvoiceOpen,
+	{InvoiceOverpaid, EvPaymentDetected}: InvoiceOverpaid, // yet another payment; credited when confirmed
+	{InvoiceOverpaid, EvConfirmedOver}:   InvoiceOverpaid,
+	{InvoiceOverpaid, EvPaymentFinal}:    InvoiceSettled,
+	{InvoiceOverpaid, EvPaymentReorged}:  InvoiceOpen,
 
-	{InvoiceConfirmed, EvPaymentFinal}:   InvoiceSettled,
-	{InvoiceConfirmed, EvPaymentReorged}: InvoiceOpen,
+	{InvoiceConfirmed, EvPaymentDetected}: InvoiceConfirmed, // paid in full, then more arrives (e.g. paid twice)
+	{InvoiceConfirmed, EvConfirmedOver}:   InvoiceOverpaid,
+	{InvoiceConfirmed, EvPaymentFinal}:    InvoiceSettled,
+	{InvoiceConfirmed, EvPaymentReorged}:  InvoiceOpen,
 
 	{InvoiceExpired, EvPaymentDetected}: InvoiceReceived, // late payment: accepted, rate re-quoted
 }
