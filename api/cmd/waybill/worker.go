@@ -20,6 +20,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/money"
 	"github.com/JoshBlazer/waybill/api/internal/outbox"
+	"github.com/JoshBlazer/waybill/api/internal/payout"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/sweep"
 	"github.com/JoshBlazer/waybill/api/internal/txmgr"
@@ -132,6 +133,13 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 		co := nr.checkout(pool, tokens, cfg.WebURL, log)
 		run(func() { co.Run(ctx, 15*time.Second) })
 	}
+	po := &payout.Service{Pool: pool, Quoter: nr.quoter, Log: log}
+	if nr.paystack != nil {
+		po.Transfers = nr.paystack
+	} else {
+		log.Warn("worker: no Paystack key; naira payouts are converted and then wait for a provider")
+	}
+	run(func() { po.Run(ctx, 10*time.Second) })
 	run(func() { w.Run(ctx, time.Second) })
 	run(func() { invoice.RunExpiry(ctx, pool, 30*time.Second, log) })
 	wg.Wait()

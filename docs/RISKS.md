@@ -18,9 +18,9 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | Risk | Guard | Proof |
 |---|---|---|
 | A payer is phished with a look-alike link and pays an attacker. | The payment page shows the contractor's **verified** legal name before any address, and links are on Waybill's domain only. | Playwright test that the name precedes the address *(stage 3)* |
-| Bank account name does not match the contractor. | Name verification against the bank before payout details can be saved. | `TestPayout_RequiresVerifiedAccount` *(stage 3)* |
+| Bank account name does not match the contractor. | Name verification against the bank before payout details can be saved. | `TestBankAccount_RefusalsSaveNothing` (mismatch, not found, bank unreachable) *(exists)* |
 | Deposit address mapped to the wrong invoice. | The address is derived from `keccak(invoiceId)` and re-derived on-chain by the factory. The mapping is unique in the database. | Foundry `test_PredictMatchesDeployed`, `testFuzz_DistinctSaltsGiveDistinctAddresses` *(exist)*; Go `TestDepositAddress_Deterministic` *(stage 1)* |
-| A contractor changes bank details right before a payout (account takeover). | Changes need re-verification, and payouts to new details wait 24 h. | `TestPayout_NewDetailsCoolingOff` *(stage 3)* |
+| A contractor changes bank details right before a payout (account takeover). | Changes need re-verification, and payouts to new details wait 24 h. | `TestBankAccount_VerifiedSaveAndCoolingOff`, `TestPayout_WaitsForTheBankAccountCoolingOff` *(exist)* |
 | Tracking codes are guessed, leaking names and amounts. | 80-bit random codes. Not-found responses never reveal near-misses. Rate limiting. | `TestTrackingCode_Entropy` *(stage 1)* |
 
 ## 3. Paying twice
@@ -28,8 +28,8 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | Risk | Guard | Proof |
 |---|---|---|
 | A client retries a create request. | Idempotency keys, stored in the same transaction as the effect. | I6 tests *(stage 1)* |
-| A worker crashes after calling the provider but before recording it. | The provider reference equals our payout id, so the provider rejects the duplicate. The `unknown` state reconciles before any resend. | `TestPayout_CrashAfterSubmitDoesNotDoublePay` *(stage 3)* |
-| A webhook is replayed. | Unique `(provider, event_id)`, processed once. | I14 tests *(stage 3)* |
+| A worker crashes after calling the provider but before recording it. | The provider reference equals our payout id, so the provider rejects the duplicate. The `unknown` state reconciles before any resend. | `TestPayout_CrashAfterSubmitDoesNotDoublePay`, `TestPayout_NotFoundIsResubmittedWithTheSameReference`, `TestPayout_ConcurrentWorkersPayOnce` *(exist)* |
+| A webhook is replayed. | Unique `(provider, event_id)`, processed once; the event only triggers a verify by reference. | `TestPaystackWebhook_ReplayProcessedOnce`, `TestTick_ChargeCallbackIsCheckedNotTrusted`, `TestPayout_CallbacksAreCheckedAndProcessedOnce` *(exist)* |
 | A replaced EVM transaction and the original both mine. | Both share one nonce, so only one can mine. Every hash is recorded before it is sent, and watched. | `TestTxMgr_StuckTransactionIsReplaced` *(exists)* |
 | A batch payout is resubmitted. | `Vault.payout` rejects a reused payout id on-chain, whichever contract calls it. | `test_RevertWhen_PayoutIdReused`, `test_RevertWhen_PayoutIdReusedAcrossBatches`, `test_RevertWhen_BatchResubmitted`, `invariant_PayoutIdPaidAtMostOnce` *(exist)* |
 | The same deposit log is processed twice. | Unique `(network, tx_hash, log_index)`. | I9 test *(stage 1)* |
@@ -42,7 +42,7 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | A sweep logs an amount different from what moved. | Events are emitted before external calls; the factory reverts unless the sweep moves exactly the announced amount. | `test_RevertWhen_SweepMovesDifferentAmountThanAnnounced` *(exists)* |
 | Fake token: a payer sends a token with the same symbol from another contract. | Only `chain_assets` contract addresses are recognised. | `TestWatcher_IgnoresUnknownToken` *(stage 1)* |
 | An RPC lies or errors and a payment is assumed. | Confirmations read from the chain the watcher follows. RPC errors never advance state. Cross-checking with a second RPC *(stage 5)*. | I12 tests *(stage 2, 5)* |
-| A forged provider webhook says "paid". | HMAC verification on the raw body, before parsing. | I14 tests *(stage 3)* |
+| A forged provider webhook says "paid". | HMAC verification on the raw body, before parsing; and a callback never marks anything paid by itself: Waybill asks Paystack by reference. | `TestPaystackWebhook_BadSignatureRejected`, `TestTick_ChargeCallbackIsCheckedNotTrusted` *(exist)* |
 | A ledger entry that does not balance. | Database trigger at commit. | I3 test *(stage 1)* |
 | Someone edits history to hide a loss. | Append-only triggers and revoked grants. | I4 test *(stage 1)* |
 
@@ -50,8 +50,8 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 
 | Risk | Guard | Proof |
 |---|---|---|
-| Rounding drift across many conversions. | Integer math with one documented rounding rule (round down to the contractor, remainder to a rounding account). | `rapid` property: sum of outputs plus remainder equals input *(stage 3)* |
-| A stale rate is honoured after a market move. | Quotes expire; late payments are re-quoted. | `TestRateLock_ExpiredQuoteRequotes` *(stage 3)* |
+| Rounding drift across many conversions. | Integer math with one documented rounding rule: round down to the contractor; the sub-kobo remainder stays with Waybill's FX position. | `TestConvert_RoundsDownByLessThanOneMinorUnit` (`rapid`) *(exists)* |
+| A stale rate is honoured after a market move. | Quotes expire; late payments are re-quoted. | `TestPayout_LatePaymentIsRequoted`, `TestQuoter_NoQuoteWhenTheRateCannotBeFound` *(exist)* |
 | Float arithmetic slips in. | `money.Amount`; an AST test forbids floats in money packages. | I2 tests *(stage 1)* |
 
 ## 6. Key compromise and operator error
@@ -74,5 +74,5 @@ Columns: **Risk** · **Guard** · **Proof** (test or check; the stage is shown w
 | A transaction is stuck with a low fee. | Replacement with both fees bumped after `StuckAfter`; fees above the cap wait for a person. | `TestTxMgr_ReplacementBumpsBothFees`, `TestTxMgr_StuckTransactionIsReplaced` (I11) *(exist)* |
 | Funds arrive at an expired invoice's address. | The watcher keeps watching expired addresses; late payments are accepted (re-quoting comes with rates in stage 3). | `TestInvoice_LatePaymentAccepted` *(exists)* |
 | Underpayment leaves funds in limbo. | `underpaid` state with explicit resolution paths; the short amount is credited to the contractor at finality, and a top-up moves the invoice on. The contractor's "accept shortfall" action is stage 3. | `TestWatcher_UnderpaidStaysUnderpaidAtFinality`, `TestWatcher_UnderpaidThenTopUp`, `TestWatcher_TwoPartPaymentIsConfirmedNotStuckUnderpaid` *(exist)* |
-| A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_UnknownIsReconciled` *(stage 3)* |
+| A payout ends in "unknown" forever. | The reconciler queries by reference on a schedule and alerts after a threshold. | `TestPayout_ProviderTimeoutGoesUnknownNotFailed` (reconciled on every tick by reference) *(exists)* |
 | Funds sent on the wrong network to the right address. | CREATE2 addresses are reproducible on any network where the factory is deployed at the same address; recovery is documented. | Runbook *(stage 6)* |

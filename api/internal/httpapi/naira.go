@@ -330,6 +330,19 @@ func (s *Server) PaystackWebhook(ctx context.Context, req PaystackWebhookRequest
 	return PaystackWebhook200Response{}, nil
 }
 
+func payoutJSON(inv invoice.Invoice) *Payout {
+	p := inv.Payout
+	if p == nil {
+		return nil
+	}
+	return &Payout{
+		State:         PayoutState(p.State),
+		NairaAmount:   Amount{Asset: string(money.NGN.Code), Minor: p.NairaAmount.String(), Scale: int(money.NGN.Scale)},
+		FailureReason: p.Failure,
+		UpdatedAt:     p.UpdatedAt.UTC(),
+	}
+}
+
 // quoteJSON and payout fields on invoices.
 func quoteJSON(inv invoice.Invoice) *Quote {
 	if inv.Quote == nil {

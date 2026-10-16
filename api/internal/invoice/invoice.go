@@ -80,6 +80,8 @@ type Invoice struct {
 	Events           []tracking.Event
 	LatestEventID    int64
 	Quote            *rates.Quote // naira invoices only
+	Payout           *store.Payout
+	PayoutEvents     []store.PayoutEvent
 }
 
 // NairaAmount is what the contractor receives at the locked rate, in kobo,
@@ -286,6 +288,14 @@ func Load(ctx context.Context, db store.DBTX, tokens map[safety.Network]string, 
 	if inv.Quote, err = loadQuote(ctx, q, row.RateQuoteID); err != nil {
 		return Invoice{}, err
 	}
+	if p, err := q.GetPayoutByInvoice(ctx, row.ID); err == nil {
+		inv.Payout = &p
+		if inv.PayoutEvents, err = q.ListPayoutEvents(ctx, row.ID); err != nil {
+			return Invoice{}, err
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Invoice{}, err
+	}
 	for _, d := range das {
 		n := safety.Network(d.Network)
 		inv.DepositAddresses = append(inv.DepositAddresses, DepositAddress{
@@ -301,7 +311,22 @@ func Load(ctx context.Context, db store.DBTX, tokens map[safety.Network]string, 
 
 // Steps returns the tracking line for the invoice.
 func (inv Invoice) Steps() []tracking.Step {
-	return tracking.Build(statemachine.InvoiceState(inv.State), inv.PayoutMode, inv.Events)
+	var p *tracking.Payout
+	if inv.Payout != nil {
+		p = &tracking.Payout{State: statemachine.PayoutState(inv.Payout.State)}
+		for _, e := range inv.PayoutEvents {
+			at := e.CreatedAt
+			switch statemachine.PayoutState(e.ToState) {
+			case statemachine.PayoutConverted:
+				if p.ConvertedAt == nil {
+					p.ConvertedAt = &at
+				}
+			case statemachine.PayoutSucceeded:
+				p.SentAt = &at
+			}
+		}
+	}
+	return tracking.Build(statemachine.InvoiceState(inv.State), inv.PayoutMode, inv.Events, p)
 }
 
 // crockford is Crockford's base32 alphabet: no I, L, O or U, so codes read
