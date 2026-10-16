@@ -9,7 +9,11 @@ export type CreateState =
 
 // What the user typed, returned with an error so the form can show it again:
 // React resets a form after its action runs.
-export type FormValues = { description: string; amount: string };
+export type FormValues = {
+  description: string;
+  amount: string;
+  payout: "hold" | "naira";
+};
 
 // Demo flow: the Next.js server creates invoices as the seeded demo
 // contractor, using a key that only the server holds. Real contractor
@@ -21,6 +25,7 @@ export async function createInvoiceAction(
   const values: FormValues = {
     description: String(form.get("description") ?? ""),
     amount: String(form.get("amount") ?? "").trim(),
+    payout: form.get("payout") === "naira" ? "naira" : "hold",
   };
   const key = process.env.WAYBILL_DEV_CONTRACTOR_KEY;
   if (!key) {
@@ -35,7 +40,7 @@ export async function createInvoiceAction(
     description: values.description,
     amount: values.amount,
     asset: "USDC",
-    payout: "hold",
+    payout: values.payout,
   });
   switch (result.kind) {
     case "created":
