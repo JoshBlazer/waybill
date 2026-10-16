@@ -222,3 +222,16 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Context:** The first CI runs (GitHub runner, Lighthouse benchmarkIndex 1,900 to 2,700) measured, as medians of three runs: tracking page LCP 2.44 to 2.45 s against a 2.0 s budget, and TBT 157 to 302 ms per run against 200 ms on every page. Individual LCP runs fall at about 1.9 s or about 2.5 s on every page, and include 2.50 s and 2.52 s on the tracking page. Unthrottled, the tracking page paints its largest text at 89 ms with CLS near zero. The simulated cost is the React and Next.js baseline (ADR-033), not Waybill's code. Removing the font preloads changed nothing measurable and was reverted.
 **Decision:** LCP ≤ 2.6 s on the tracking page and ≤ 3.0 s elsewhere; TBT ≤ 350 ms on every page. CLS and total-transfer budgets are unchanged. The step remains a hard CI gate. The tracking page's 2.6 s replaces the 2.5 s first proposed, because 2.5 s sits inside the measured spread and would fail at random.
 **Consequences:** The gate catches regressions, such as a heavy dependency or a blocking script, without failing on noise. Meeting the original figures would need a tracking page with no client components (live updates via a small plain script), which is the recorded alternative if real-device measurements show it matters.
+
+## ADR-038 Public API: key management and outgoing webhooks
+**Status:** Proposed, 2026-10-16. Awaiting owner approval of the OpenAPI changes; no implementation yet.
+**Context:** Contractors can only get an API key from `seed-dev`, and nothing tells their systems when an invoice changes state. The roadmap's stage 2 asks for public API keys and signed outgoing webhooks with retries and a delivery log (invariant I13).
+**Decision:** OpenAPI 0.3.0 adds seven operations, all authenticated by contractor key:
+- `POST`, `GET /v1/api-keys` and `DELETE /v1/api-keys/{id}`. A full key is shown once. Revoking the last active key is a 409.
+- `POST`, `GET /v1/webhook-endpoints`, `DELETE /v1/webhook-endpoints/{id}`, and `GET /v1/webhook-endpoints/{id}/deliveries`. The signing secret is shown once.
+
+Events are invoice state changes (`invoice.received` … `invoice.reopened`), delivered by the outbox worker. Each is signed `Waybill-Signature: t=…,v1=HMAC-SHA256(secret, t.body)`, delivered at least once with a stable event id, and retried with backoff for about 24 h. Every attempt is logged. Endpoint URLs must be https on a public host; private, loopback and link-local addresses are refused at registration and again after DNS resolution at delivery (SSRF guard). Create endpoints take `Idempotency-Key`, like invoices.
+**Consequences:**
+- Schema: `api_keys` gains `name` and `last_used_at`; new `webhook_endpoints`, `webhook_events` and `webhook_deliveries` tables. The ledger schema is unchanged.
+- Webhook secrets must be readable to sign, so they are stored as given (test-mode only), redacted from logs, and never returned after creation. Encryption at rest with a KMS is out of scope for a test-network project and is listed in RISKS.md.
+- OpenAPI 3.0 has no `webhooks` section, so the event body is defined as the `WebhookEvent` schema.
