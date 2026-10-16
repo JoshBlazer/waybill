@@ -118,6 +118,20 @@ services:
     restart: unless-stopped
     mem_limit: 128m
 
+  # Outbox jobs and invoice expiry (docs/ARCHITECTURE.md §7). More than one
+  # can run: leases keep workers on separate jobs.
+  worker:
+    image: waybill-api:local
+    pull_policy: never
+    command: ["worker"]
+    environment: *app-env
+    volumes: [deployments:/deployments:ro]
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      contracts: { condition: service_completed_successfully }
+    restart: unless-stopped
+    mem_limit: 128m
+
   web:
     build: ../web
     environment:

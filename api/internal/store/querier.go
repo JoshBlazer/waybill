@@ -20,7 +20,12 @@ type Querier interface {
 	// with the same key blocks here until the first transaction ends.
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (string, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
+	// Only the current lease holder can finish a job.
+	CompleteOutbox(ctx context.Context, arg CompleteOutboxParams) (int64, error)
 	DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBlocksFromParams) error
+	// Outbox. See docs/ARCHITECTURE.md §7.
+	// With a dedupe key already used, nothing is inserted and no row returns.
+	EnqueueOutbox(ctx context.Context, arg EnqueueOutboxParams) (int64, error)
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
@@ -48,7 +53,12 @@ type Querier interface {
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) (Payment, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) error
+	KillOutbox(ctx context.Context, arg KillOutboxParams) (int64, error)
 	LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	// Leases up to max ready jobs for owner. A job is ready when it is due, not
+	// finished, and not leased (or its lease expired: the worker crashed).
+	// SKIP LOCKED lets concurrent workers take disjoint jobs without waiting.
+	LeaseOutbox(ctx context.Context, arg LeaseOutboxParams) ([]LeaseOutboxRow, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
@@ -70,6 +80,7 @@ type Querier interface {
 	Ping(ctx context.Context) (int32, error)
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
 	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
+	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)

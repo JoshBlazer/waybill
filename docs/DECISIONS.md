@@ -223,6 +223,11 @@ Format: **Status** · **Context** · **Decision** · **Consequences**.
 **Decision:** LCP ≤ 2.6 s on the tracking page and ≤ 3.0 s elsewhere; TBT ≤ 350 ms on every page. CLS and total-transfer budgets are unchanged. The step remains a hard CI gate. The tracking page's 2.6 s replaces the 2.5 s first proposed, because 2.5 s sits inside the measured spread and would fail at random.
 **Consequences:** The gate catches regressions, such as a heavy dependency or a blocking script, without failing on noise. Meeting the original figures would need a tracking page with no client components (live updates via a small plain script), which is the recorded alternative if real-device measurements show it matters.
 
+## ADR-037 The worker runs as its own Compose service
+**Status:** Accepted, 2026-10-16 (owner approved adding the service).
+**Context:** Sweeps, payouts and webhook deliveries all run from the outbox (ADR-006). Until now the `worker` subcommand only idled and was not in Compose, so invoice expiry ran inside the watcher process.
+**Decision:** `deploy/compose.yaml` gains a `worker` service on the existing API image (128 MB). It runs `outbox.Worker` and invoice expiry. Expiry moves out of the watcher.
+**Consequences:** No new image or dependency. The worker can be killed on its own without touching the API or the watcher, which the "pull the plug" demo relies on (ADR-005). Several workers may run, because leases keep them on separate jobs and expiry is safe to repeat.
 ## ADR-038 Public API: key management and outgoing webhooks
 **Status:** Proposed, 2026-10-16. Awaiting owner approval of the OpenAPI changes; no implementation yet.
 **Context:** Contractors can only get an API key from `seed-dev`, and nothing tells their systems when an invoice changes state. The roadmap's stage 2 asks for public API keys and signed outgoing webhooks with retries and a delivery log (invariant I13).

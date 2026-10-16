@@ -19,7 +19,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Database migrations (goose; schema empty) against real PostgreSQL | Done | `make test-api` → `TestMigrate_AgainstRealPostgres` |
 | **Stage 1 — Thin slice** (exit check passed 2026-10-16) | Done | [walkthrough](docs/walkthroughs/stage-1.md) |
 | Contracts: mock stablecoin, CREATE2 deposit forwarders and factory, vault with limits and pause | Done (stage 1) | `make test-contracts` (25 tests, fuzzed) |
-| Local stack: PostgreSQL, Anvil, API, web | Done | `make up` |
+| Local stack: PostgreSQL, Anvil, API, watcher, worker, web | Done | `make up` |
 | CI on every push | Done | [Actions](../../actions) |
 | `money` package: exact integer amounts, no floats (AST-checked), property-tested | Done (stage 1) | `go test ./internal/money` |
 | Invoice state machine: pure, all 72 (state, event) pairs tested | Done (stage 1) | `go test ./internal/statemachine` |
@@ -33,6 +33,7 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Payment edge cases: payments in parts, top-ups, overpayment, paying twice, payment after settlement, invoice expiry and late payment | Done (stage 2) | `go test ./internal/watcher` (`edge_test.go`) |
 | Transaction manager nonce and fee logic (hand-written) | Design note, signatures and failing tests ready; awaiting implementation | [PR #7](../../pull/7) |
 | `BatchPayout` contract: all-or-nothing batches through the vault's payout-id guard and limits | Done (stage 2); deployed with the payout plumbing | `make test-contracts` (10 unit tests, 4 invariants) |
+| Outbox and worker: jobs enqueued in the same transaction as the change, leased with `SKIP LOCKED`, retried with backoff, dead after the last attempt; invoice expiry runs in the worker | Done (stage 2) | `go test ./internal/outbox` (12 tests incl. 8 concurrent workers) |
 | Transaction manager plumbing, sweeping, webhooks | Not started (stage 2) | — |
 | Naira settlement via Paystack test mode | Not started (stage 3) | — |
 | Teams, batch pay, approvals, exports, reconciliation | Not started (stage 4) | — |
