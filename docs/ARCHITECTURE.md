@@ -226,7 +226,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I12 | **"Couldn't find out" is distinct from "no".** An RPC or provider error never becomes "not paid" or "not sent". | Tri-state results (`Known(true)`, `Known(false)`, `Unknown(err)`); payout `unknown` state | `TestWatcher_RPCErrorDoesNotAdvance`, `TestWatcher_FinalizedTagUnknownFinalisesNothing`, `TestCheck_RPCUnreachableFailsClosed` *(exist)*; `TestPayout_ProviderTimeoutGoesUnknownNotFailed` *(exists)* |
 | I13 | **Outgoing webhooks are signed, retried and logged.** | `t=…,v1=HMAC-SHA256(secret, t.body)` header; backoff; `webhook_deliveries` | `TestWebhook_SignatureVerifies`, `TestWebhook_RetriesWithBackoff`, `TestWebhook_PrivateAddressAtDeliveryIsRefused` in `api/internal/webhook` *(exist)* |
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce`, `TestPayout_CallbacksAreCheckedAndProcessedOnce` *(exist)* |
-| I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `txmgr.Signer` interface; `LocalSigner` shows only its address in `String()`/`GoString()`/`LogValue()`; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(exists)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
+| I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `txmgr.Signer` interface; `LocalSigner` shows only its address in `String()`/`GoString()`/`LogValue()`; no private-key config for BTC | `TestSecret_NeverAppearsInLogs`, `TestBTCConfig_RejectsPrivateKey` *(exist)* |
 | I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant tests `invariant_VaultOutflowEqualsRecordedPayouts`, `invariant_PayoutIdPaidAtMostOnce`, `invariant_DailyTotalWithinLimit`, `invariant_BatchesAllOrNothing` in `contracts/test/BatchPayout.invariant.t.sol` *(exist)* |
 | I17 | **Approver ≠ creator for runs over threshold.** | SQL `CHECK` plus API check | `TestBatch_SelfApprovalRejected` (API and a direct SQL insert) *(exists)* |
 | I18 | **Reserves ≥ liabilities.** | Reconciliation job; proof-of-reserves page | `TestReconcile_DetectsShortfall` *(stage 4)* |
@@ -249,6 +249,15 @@ Each invariant names the test that proves it. A test that does not exist yet car
 - SSRF guard: URLs must be https on a public host at registration, and the dialer refuses private, loopback, link-local and shared addresses after DNS resolution. A refused attempt sends nothing and is not retried.
 
 ## 8. Chain watching
+
+**Bitcoin** (`internal/btcwatch`, ADR-045) follows the same rules with its own tables (`btc_addresses`, `btc_payments`, `btc_blocks`, `btc_cursors`):
+- It reads every block (bitcoind `getblock` verbosity 2, or the Esplora API on signet) and stores each block's hash.
+- An output paying a derived address is a payment, recorded once per `(txid, vout)`.
+- A payment is booked in a block (`custody:xpub:{net}:BTC` up, the contractor's BTC pending balance up), and final at 3 blocks on regtest or 6 on signet.
+- A replaced block rewinds the same way as on EVM: payments marked reorged, bookings reversed, invoices re-derived.
+- Addresses are `xpub/0/i` (BIP84 P2WPKH), with a per-network counter, so an address is never reused.
+
+**EVM:**
 
 - Polls `eth_getBlockByNumber` and `eth_getLogs` for ERC-20 `Transfer` events to known deposit addresses. Polling (rather than subscriptions) survives RPC reconnects and is easy to replay.
 - Stores the hash of the last block of every scanned range, read before the range's logs. Each tick first compares the newest stored block and the block of every open payment with the node. Because each block commits to its parent, a replaced block anywhere below changes the newest stored hash too. On a mismatch the watcher walks the stored blocks back to the newest one that still matches (the common ancestor). Then, in one transaction, it marks payments in replaced blocks `reorged`, posts reversing entries for any that were confirmed, re-derives each affected invoice's state from its remaining payments, and moves the cursor back so the blocks are scanned again.

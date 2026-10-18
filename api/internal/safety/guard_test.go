@@ -200,7 +200,7 @@ func TestCheck_RPCErrorFailsClosed(t *testing.T) {
 	}
 }
 
-func TestCheck_BitcoinFailsClosedUntilLiveCheckExists(t *testing.T) {
+func TestCheck_BitcoinFailsClosedWithoutAGenesisProber(t *testing.T) {
 	cfg := Config{Chains: []Chain{{Network: BTCRegtest, RPCURL: "http://localhost:18443"}}}
 	if err := CheckConfig(cfg); err != nil {
 		t.Fatalf("CheckConfig = %v; regtest is on the allowlist", err)
@@ -279,5 +279,31 @@ func TestCheck_FallbackOnAnotherChainIsRefused(t *testing.T) {
 	cfg.Chains[0].Fallbacks = []string{"not a url"}
 	if err := CheckConfig(cfg); err == nil {
 		t.Fatal("a malformed fallback passed the static check")
+	}
+}
+
+// genesisProber answers a fixed block 0 for every Bitcoin endpoint.
+type genesisProber struct {
+	EVMProber
+	hash string
+}
+
+func (g genesisProber) Genesis(context.Context, string) (string, error) { return g.hash, nil }
+
+// A Bitcoin node passes only if its block 0 is the configured network's:
+// a mainnet or testnet3 node is refused.
+func TestCheck_BitcoinGenesisMustMatch(t *testing.T) {
+	cfg := Config{Chains: []Chain{{Network: BTCRegtest, RPCURL: "http://localhost:18443"}}}
+	if err := Check(context.Background(), cfg, genesisProber{hash: BTCGenesis[BTCRegtest]}); err != nil {
+		t.Fatalf("regtest node: %v", err)
+	}
+	const mainnet = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
+	err := Check(context.Background(), cfg, genesisProber{hash: mainnet})
+	if err == nil || !strings.Contains(err.Error(), "which is not btc:regtest") {
+		t.Fatalf("mainnet node: %v", err)
+	}
+	signet := Config{Chains: []Chain{{Network: BTCSignet, RPCURL: "https://mempool.example/signet/api"}}}
+	if err := Check(context.Background(), signet, genesisProber{hash: BTCGenesis[BTCRegtest]}); err == nil {
+		t.Fatal("a regtest node passed as signet")
 	}
 }

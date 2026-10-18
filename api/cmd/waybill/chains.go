@@ -124,6 +124,22 @@ func runWatcher(ctx context.Context, log *slog.Logger) error {
 			_ = w.Run(ctx)
 		}()
 	}
+	bnets, err := btcNetworks(cfg)
+	if err != nil {
+		return err
+	}
+	for n, b := range bnets {
+		w, err := btcWatcher(ctx, pool, n, b, log)
+		if err != nil {
+			return err
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("watching", "network", n, "confirmations", w.Cfg.Confirmations, "finality", w.Cfg.Finality)
+			w.Run(ctx)
+		}()
+	}
 	wg.Wait()
 	return nil
 }
@@ -143,15 +159,16 @@ const devContractorWallet = "0xa0ee7a142d267c1f36714e4a8f75612f20a79720"
 var devOrgThreshold = money.FromInt64(500_000_000)
 
 // runSeedDev installs the local demo contractor and its API key. It refuses
-// to run unless every configured chain is local Anvil.
+// to run unless every configured chain is local: Anvil or Bitcoin regtest.
 func runSeedDev(ctx context.Context, log *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 	for _, n := range cfg.NetworkIDs() {
-		if n != safety.EVMAnvil {
-			return fmt.Errorf("seed-dev only runs against local Anvil; %s is configured", n)
+		// Both are local chains that start empty; nothing else is.
+		if n != safety.EVMAnvil && n != safety.BTCRegtest {
+			return fmt.Errorf("seed-dev only runs against local Anvil and Bitcoin regtest; %s is configured", n)
 		}
 	}
 	if err := cfg.RequireDatabase(); err != nil {

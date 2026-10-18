@@ -1546,12 +1546,16 @@ components:
           example: "125.50"
         asset:
           type: string
-          enum: [USDC]
+          enum: [USDC, BTC]
+          description: |
+            `BTC` invoices are paid on Bitcoin test networks to a fresh address
+            derived from an extended public key, and are held in BTC: payout
+            must be `hold` (ADR-045).
         payout:
           type: string
           enum: [naira, hold]
           description: |
-            `hold` keeps the stablecoin in the contractor's balance. `naira`
+            `hold` keeps the stablecoin (or BTC) in the contractor's balance. `naira`
             locks a rate now (see `Quote`) and sends naira to the verified bank
             account once the invoice settles. `naira` needs a verified bank
             account and an available rate: without either it is a 422 or a
@@ -1564,19 +1568,25 @@ components:
     DepositAddress:
       type: object
       additionalProperties: false
-      required: [network, address, token]
+      required: [network, address]
       properties:
         network:
           type: string
           example: evm:84532
         address:
           type: string
-          pattern: "^0x[0-9a-fA-F]{40}$"
-          description: EIP-55 checksummed. Unique to this invoice and network.
+          description: |
+            Unique to this invoice and network. EVM: EIP-55 checksummed `0x…`.
+            Bitcoin: a bech32 P2WPKH address (`bcrt1…` on regtest, `tb1…` on signet).
         token:
           type: string
           pattern: "^0x[0-9a-fA-F]{40}$"
-          description: The only token contract accepted at this address.
+          description: EVM only. The only token contract accepted at this address.
+        uri:
+          type: string
+          description: |
+            Bitcoin only. A BIP21 `bitcoin:` URI with the invoice amount, for
+            wallets and QR codes.
 
     Invoice:
       type: object

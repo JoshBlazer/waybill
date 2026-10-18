@@ -102,12 +102,15 @@ func (e ConversionState) Valid() bool {
 
 // Defines values for CreateInvoiceRequestAsset.
 const (
+	BTC  CreateInvoiceRequestAsset = "BTC"
 	USDC CreateInvoiceRequestAsset = "USDC"
 )
 
 // Valid indicates whether the value is a known member of the CreateInvoiceRequestAsset enum.
 func (e CreateInvoiceRequestAsset) Valid() bool {
 	switch e {
+	case BTC:
+		return true
 	case USDC:
 		return true
 	default:
@@ -672,13 +675,17 @@ type CreateInvoiceRequest struct {
 	// Amount Major units as a decimal string, at most the asset's scale in decimals.
 	//
 	// Example: 125.50
-	Amount string                    `json:"amount"`
-	Asset  CreateInvoiceRequestAsset `json:"asset"`
+	Amount string `json:"amount"`
+
+	// Asset `BTC` invoices are paid on Bitcoin test networks to a fresh address
+	// derived from an extended public key, and are held in BTC: payout
+	// must be `hold` (ADR-045).
+	Asset CreateInvoiceRequestAsset `json:"asset"`
 
 	// Description Example: Design work, September
 	Description string `json:"description"`
 
-	// Payout `hold` keeps the stablecoin in the contractor's balance. `naira`
+	// Payout `hold` keeps the stablecoin (or BTC) in the contractor's balance. `naira`
 	// locks a rate now (see `Quote`) and sends naira to the verified bank
 	// account once the invoice settles. `naira` needs a verified bank
 	// account and an available rate: without either it is a 422 or a
@@ -686,10 +693,12 @@ type CreateInvoiceRequest struct {
 	Payout CreateInvoiceRequestPayout `json:"payout"`
 }
 
-// CreateInvoiceRequestAsset defines model for CreateInvoiceRequest.Asset.
+// CreateInvoiceRequestAsset `BTC` invoices are paid on Bitcoin test networks to a fresh address
+// derived from an extended public key, and are held in BTC: payout
+// must be `hold` (ADR-045).
 type CreateInvoiceRequestAsset string
 
-// CreateInvoiceRequestPayout `hold` keeps the stablecoin in the contractor's balance. `naira`
+// CreateInvoiceRequestPayout `hold` keeps the stablecoin (or BTC) in the contractor's balance. `naira`
 // locks a rate now (see `Quote`) and sends naira to the verified bank
 // account once the invoice settles. `naira` needs a verified bank
 // account and an available rate: without either it is a 422 or a
@@ -739,14 +748,19 @@ type CreatedWebhookEndpoint struct {
 
 // DepositAddress defines model for DepositAddress.
 type DepositAddress struct {
-	// Address EIP-55 checksummed. Unique to this invoice and network.
+	// Address Unique to this invoice and network. EVM: EIP-55 checksummed `0x…`.
+	// Bitcoin: a bech32 P2WPKH address (`bcrt1…` on regtest, `tb1…` on signet).
 	Address string `json:"address"`
 
 	// Network Example: evm:84532
 	Network string `json:"network"`
 
-	// Token The only token contract accepted at this address.
-	Token string `json:"token"`
+	// Token EVM only. The only token contract accepted at this address.
+	Token *string `json:"token,omitempty"`
+
+	// Uri Bitcoin only. A BIP21 `bitcoin:` URI with the invoice amount, for
+	// wallets and QR codes.
+	Uri *string `json:"uri,omitempty"`
 }
 
 // Funding defines model for Funding.

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/JoshBlazer/waybill/api/internal/btc"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/money"
@@ -37,6 +39,9 @@ var (
 	ErrRateUnavailable = errors.New("invoice: no naira rate available right now")
 	ErrNoNetworks      = errors.New("invoice: no payment network is configured")
 	ErrNotFound        = errors.New("invoice: not found")
+	// ErrBTCHoldOnly: Bitcoin is receive-only this stage, so a BTC invoice
+	// is held as BTC (ADR-045).
+	ErrBTCHoldOnly = errors.New("invoice: a BTC invoice is held in BTC; naira payout is for USDC invoices")
 )
 
 // DefaultTTL is how long a payment link stays open.
@@ -50,6 +55,9 @@ type Service struct {
 	// Quoter locks the naira rate of naira invoices (ADR-039). Nil means
 	// naira invoices are refused with ErrRateUnavailable.
 	Quoter *rates.Quoter
+	// BTC derives receive addresses for BTC invoices, per Bitcoin network
+	// (ADR-045). Empty means BTC invoices are refused.
+	BTC map[safety.Network]*btc.Deriver
 }
 
 // NairaPair is the conversion a naira invoice locks.
@@ -108,8 +116,12 @@ func (s *Service) Create(ctx context.Context, tx pgx.Tx, contractor uuid.UUID, i
 		return Invoice{}, ErrInvalidPayout
 	}
 	asset, ok := money.LookupAsset(in.Asset)
-	if !ok || asset.Code != money.USDC.Code {
+	isBTC := ok && asset.Code == money.BTC.Code
+	if !ok || (asset.Code != money.USDC.Code && !isBTC) {
 		return Invoice{}, fmt.Errorf("%w: %s", ErrUnsupportedAsset, in.Asset)
+	}
+	if isBTC && in.Payout != "hold" {
+		return Invoice{}, ErrBTCHoldOnly
 	}
 	amount, err := money.ParseDecimal(in.Amount, asset.Scale)
 	if err != nil {
@@ -118,7 +130,7 @@ func (s *Service) Create(ctx context.Context, tx pgx.Tx, contractor uuid.UUID, i
 	if amount.Sign() <= 0 {
 		return Invoice{}, fmt.Errorf("%w: must be greater than zero", ErrInvalidAmount)
 	}
-	if len(s.Deployments) == 0 {
+	if (isBTC && len(s.BTC) == 0) || (!isBTC && len(s.Deployments) == 0) {
 		return Invoice{}, ErrNoNetworks
 	}
 	code, err := NewTrackingCode()
@@ -156,9 +168,17 @@ func (s *Service) Create(ctx context.Context, tx pgx.Tx, contractor uuid.UUID, i
 		return Invoice{}, fmt.Errorf("invoice: insert: %w", err)
 	}
 
-	salt := evm.SaltForInvoice(row.ID)
 	var addrs []DepositAddress
+	if isBTC {
+		if addrs, err = s.btcAddresses(ctx, q, row.ID); err != nil {
+			return Invoice{}, err
+		}
+	}
+	salt := evm.SaltForInvoice(row.ID)
 	for _, n := range sortedNetworks(s.Deployments) {
+		if isBTC {
+			break // paid on Bitcoin only
+		}
 		d := s.Deployments[n]
 		addr := d.PredictDepositAddress(salt)
 		if err := q.InsertDepositAddress(ctx, store.InsertDepositAddressParams{
@@ -183,6 +203,32 @@ func (s *Service) Create(ctx context.Context, tx pgx.Tx, contractor uuid.UUID, i
 		LatestEventID:    ev.ID,
 		Quote:            quote,
 	}, nil
+}
+
+// btcAddresses gives the invoice a fresh receive address on each Bitcoin
+// network: the next unused index of that network's xpub.
+func (s *Service) btcAddresses(ctx context.Context, q *store.Queries, id uuid.UUID) ([]DepositAddress, error) {
+	nets := make([]safety.Network, 0, len(s.BTC))
+	for n := range s.BTC {
+		nets = append(nets, n)
+	}
+	slices.Sort(nets)
+	var out []DepositAddress
+	for _, n := range nets {
+		idx, err := q.NextBTCIndex(ctx, string(n))
+		if err != nil {
+			return nil, err
+		}
+		addr, err := s.BTC[n].Address(uint32(idx)) //nolint:gosec // the counter is capped below 2^31
+		if err != nil {
+			return nil, err
+		}
+		if err := q.InsertBTCAddress(ctx, store.InsertBTCAddressParams{Address: addr, Network: string(n), InvoiceID: id, DerivationIndex: int64(idx)}); err != nil {
+			return nil, fmt.Errorf("invoice: address on %s: %w", n, err)
+		}
+		out = append(out, DepositAddress{Network: n, Address: addr})
+	}
+	return out, nil
 }
 
 // lockRate checks that the contractor can receive naira and stores a quote
@@ -301,6 +347,13 @@ func Load(ctx context.Context, db store.DBTX, tokens map[safety.Network]string, 
 		inv.DepositAddresses = append(inv.DepositAddresses, DepositAddress{
 			Network: n, Address: checksum(d.Address), Token: checksum(tokens[n]),
 		})
+	}
+	btcAddrs, err := q.ListBTCAddressesByInvoice(ctx, row.ID)
+	if err != nil {
+		return Invoice{}, err
+	}
+	for _, a := range btcAddrs {
+		inv.DepositAddresses = append(inv.DepositAddresses, DepositAddress{Network: safety.Network(a.Network), Address: a.Address})
 	}
 	for _, e := range evs {
 		inv.Events = append(inv.Events, tracking.Event{Type: e.Type, At: e.CreatedAt})

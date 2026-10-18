@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JoshBlazer/waybill/api/internal/batch"
+	"github.com/JoshBlazer/waybill/api/internal/btc"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/ledger"
 	"github.com/JoshBlazer/waybill/api/internal/money"
@@ -73,8 +74,11 @@ type Reconciler struct {
 	Pool     *pgxpool.Pool
 	Networks map[safety.Network]Network
 	Provider Provider // nil: R5 is skipped
-	Log      *slog.Logger
-	Now      func() time.Time
+	// BTC are the Bitcoin networks: R3 compares xpub custody with the
+	// unspent value at Waybill's addresses (ADR-045).
+	BTC map[safety.Network]btc.Chain
+	Log *slog.Logger
+	Now func() time.Time
 	// ProviderConcurrency caps calls to the provider at once. Default 4.
 	ProviderConcurrency int
 }
@@ -234,6 +238,24 @@ func (r *Reconciler) run(ctx context.Context, opts Options) (Report, error) {
 			return Report{}, fmt.Errorf("reconcile %s: records: %w", n, err)
 		}
 		rep.Checks = append(rep.Checks, rc)
+	}
+
+	btcNets := make([]safety.Network, 0, len(r.BTC))
+	for n := range r.BTC {
+		btcNets = append(btcNets, n)
+	}
+	sort.Slice(btcNets, func(i, j int) bool { return btcNets[i] < btcNets[j] })
+	for _, n := range btcNets {
+		c, height, err := r.checkBTC(ctx, n, r.BTC[n])
+		if err != nil {
+			return Report{}, fmt.Errorf("reconcile %s: %w", n, err)
+		}
+		rep.AsOf[n] = height
+		if c.Status == Unsettled && (prev[c.ID] == Unsettled || prev[c.ID] == Difference) {
+			c.Status = Difference
+			c.Note = "unexplained on two runs in a row"
+		}
+		rep.Checks = append(rep.Checks, c)
 	}
 
 	pc, err := r.checkProvider(ctx, since)
@@ -496,6 +518,48 @@ func compare(c *Check, inLedger, onChain money.Amount) {
 		c.Status = Unsettled
 		c.Problems = []string{fmt.Sprintf("chain %s, ledger %s, in flight %s: %s unexplained", onChain, inLedger, explained, rest)}
 	}
+}
+
+// R3 for Bitcoin: xpub custody against the unspent value at every
+// address Waybill derived. The holder of the private key can spend from
+// those addresses outside Waybill; that shows here as a difference, which
+// is right: the books must hear about it.
+func (r *Reconciler) checkBTC(ctx context.Context, n safety.Network, c btc.Chain) (Check, uint64, error) {
+	chk := Check{ID: "R3:" + string(n), Name: "Bitcoin custody on " + string(n)}
+	height, err := c.Height(ctx)
+	if err != nil {
+		return chk, 0, err
+	}
+	q := store.New(r.Pool)
+	h := int64(height) //nolint:gosec // block height
+	seen, err := q.ListDetectedBTCPaymentsUpTo(ctx, store.ListDetectedBTCPaymentsUpToParams{Network: string(n), Height: h})
+	if err != nil {
+		return chk, 0, err
+	}
+	for _, p := range seen {
+		chk.InFlight = append(chk.InFlight, inFlight("payment seen, not yet confirmed", "btc_payment "+p.ID.String(), p.Amount))
+	}
+	above, err := q.ListBookedBTCPaymentsAbove(ctx, store.ListBookedBTCPaymentsAboveParams{Network: string(n), Height: h})
+	if err != nil {
+		return chk, 0, err
+	}
+	for _, p := range above {
+		chk.InFlight = append(chk.InFlight, inFlight("payment booked above the height read", "btc_payment "+p.ID.String(), p.Amount.Neg()))
+	}
+	addrs, err := q.ListBTCAddressesAll(ctx, string(n))
+	if err != nil {
+		return chk, 0, err
+	}
+	onChain, err := c.Unspent(ctx, addrs)
+	if err != nil {
+		return chk, 0, err
+	}
+	inLedger, err := q.GetBalanceByCode(ctx, fmt.Sprintf("custody:xpub:%s:BTC", strings.ReplaceAll(string(n), ":", "_")))
+	if err != nil {
+		return chk, 0, err
+	}
+	compare(&chk, inLedger, onChain)
+	return chk, height, nil
 }
 
 // R4.
