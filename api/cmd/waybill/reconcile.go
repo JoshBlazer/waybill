@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/JoshBlazer/waybill/api/internal/btc"
 	"github.com/JoshBlazer/waybill/api/internal/db"
 	"github.com/JoshBlazer/waybill/api/internal/reconcile"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
@@ -19,8 +20,11 @@ import (
 // reconcileInterval is how often the worker reconciles.
 const reconcileInterval = 15 * time.Minute
 
-func newReconciler(pool *pgxpool.Pool, chains map[safety.Network]evmChain, nr naira, log *slog.Logger) *reconcile.Reconciler {
-	rc := &reconcile.Reconciler{Pool: pool, Networks: map[safety.Network]reconcile.Network{}, Log: log}
+func newReconciler(pool *pgxpool.Pool, chains map[safety.Network]evmChain, bnets map[safety.Network]btcNetwork, nr naira, log *slog.Logger) *reconcile.Reconciler {
+	rc := &reconcile.Reconciler{Pool: pool, Networks: map[safety.Network]reconcile.Network{}, BTC: map[safety.Network]btc.Chain{}, Log: log}
+	for n, b := range bnets {
+		rc.BTC[n] = b.chain
+	}
 	for n, c := range chains {
 		rc.Networks[n] = reconcile.Network{Chain: c.client, Deployment: c.deployment}
 	}
@@ -61,7 +65,11 @@ func runReconcile(ctx context.Context, log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
-	rc := newReconciler(pool, chains, nr, log)
+	bnets, err := btcNetworks(cfg)
+	if err != nil {
+		return err
+	}
+	rc := newReconciler(pool, chains, bnets, nr, log)
 	opts := reconcile.Options{Full: *full}
 	var rep reconcile.Report
 	if *settle {

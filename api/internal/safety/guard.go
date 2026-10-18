@@ -68,6 +68,20 @@ type ChainIDProber interface {
 	ChainID(ctx context.Context, rpcURL string) (*big.Int, error)
 }
 
+// GenesisProber reads a Bitcoin endpoint's block 0 hash. A prober that
+// also implements it lets Bitcoin networks pass the live check; without it
+// they fail closed.
+type GenesisProber interface {
+	Genesis(ctx context.Context, rpcURL string) (string, error)
+}
+
+// BTCGenesis is block 0 of each allowed Bitcoin network. Mainnet and
+// testnet3 have other genesis blocks, so a node on either is refused.
+var BTCGenesis = map[Network]string{
+	BTCRegtest: "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206",
+	BTCSignet:  "00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6",
+}
+
 // LiveCheckTimeout bounds each RPC probe so a hung endpoint cannot hang startup.
 const LiveCheckTimeout = 10 * time.Second
 
@@ -134,6 +148,25 @@ func CheckLive(ctx context.Context, cfg Config, prober ChainIDProber) error {
 				}
 				if got.Cmp(want) != 0 {
 					errs = append(errs, fmt.Errorf("network %q: RPC at %s reports chain id %s, want %s", c.Network, host, got, want))
+				}
+			}
+		case "btc":
+			gp, ok := prober.(GenesisProber)
+			if !ok {
+				errs = append(errs, fmt.Errorf("network %q: no Bitcoin live check configured; refusing to start", c.Network))
+				continue
+			}
+			for _, u := range c.URLs() {
+				host := RedactedHost(u)
+				pctx, cancel := context.WithTimeout(ctx, LiveCheckTimeout)
+				got, err := gp.Genesis(pctx, u)
+				cancel()
+				if err != nil {
+					errs = append(errs, fmt.Errorf("network %q: could not read block 0 from %s: %w", c.Network, host, redactErr(err, u)))
+					continue
+				}
+				if got != BTCGenesis[c.Network] {
+					errs = append(errs, fmt.Errorf("network %q: %s has genesis block %s, which is not %s", c.Network, host, got, c.Network))
 				}
 			}
 		default:

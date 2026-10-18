@@ -84,7 +84,7 @@ Result (2026-10-18): passed. `TestExitCheck_BatchWithDualApprovalCompletes` and 
 ## Stage 5 — Breadth and operations
 
 - [ ] Ethereum Sepolia as a second EVM network.
-- [ ] Bitcoin receive on regtest (opt-in Compose profile) and signet: xpub-only address derivation, watcher, reorgs.
+- [x] Bitcoin receive on regtest (opt-in Compose profile) and signet: xpub-only address derivation, watcher, reorgs ([design/stage5.md](design/stage5.md) §2, ADR-045).
 - [x] RPC failover and node health monitoring ([design/stage5.md](design/stage5.md) §3, ADR-045).
 - [x] Metrics and traces (OpenTelemetry over OTLP; opt-in `grafana/otel-lgtm` profile; ADR-045).
 

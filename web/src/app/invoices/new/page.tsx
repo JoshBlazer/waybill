@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { apiBaseUrl, fetchBankAccount } from "@/lib/api/client";
+import { apiBaseUrl, fetchBankAccount, fetchHealth } from "@/lib/api/client";
 import { CreateInvoiceForm, type PayoutAccount } from "./CreateInvoiceForm";
 
 export const metadata: Metadata = { title: "New invoice · Waybill" };
@@ -46,7 +46,16 @@ async function FreshForm() {
     account =
       r.kind === "ok" ? r.value : r.kind === "not_found" ? null : "unknown";
   }
+  // BTC invoices are offered when the server watches a Bitcoin network.
+  const health = await fetchHealth(apiBaseUrl());
+  const bitcoin =
+    health.kind === "ok" &&
+    health.health.networks.some((n) => n.startsWith("btc:"));
   return (
-    <CreateInvoiceForm idempotencyKey={crypto.randomUUID()} account={account} />
+    <CreateInvoiceForm
+      idempotencyKey={crypto.randomUUID()}
+      account={account}
+      bitcoin={bitcoin}
+    />
   );
 }

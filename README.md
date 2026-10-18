@@ -55,7 +55,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Invoices, receipts and the accountant export: invoice and receipt PDFs (a run's receipt names its creator, approver and sender) from a standard-library PDF writer, JSON receipts, and a CSV of the caller's own available balances with money in, money out, balance and chain or provider reference, guarded against spreadsheet formulas; each figure read from the ledger | Done (stage 4); API 0.7.0 (ADR-044) | `go test ./internal/pdf ./internal/documents ./internal/httpapi` (`documents_test.go`), `go test ./internal/payout ./internal/batch` (receipts and exports against the ledger; the run on Anvil); `make e2e` (`batches.spec.ts` downloads the run receipt and the CSV) |
 | Contractor balance and conversion: a two-minute quote on part of the USDC balance, accepted only before it expires (never re-quoted), booked with the same four legs as an invoice payout's conversion, and sent to the bank through the existing payout pipeline; concurrent accepts cannot overdraw | Done (stage 4); API 0.7.0 (ADR-044) | `go test ./internal/conversion` (incl. expiry, concurrent accepts, the payout sent and reconciled), `go test ./internal/httpapi` (`conversions_test.go`); `make e2e` (`conversion.spec.ts`) |
 | Metrics and traces: OpenTelemetry over OTLP/HTTP, off unless an endpoint is set; spans for API requests, outbox jobs, watcher ticks, RPC calls and reconciliation; metrics for request rate and latency, watcher blocks behind, outbox depth and dead jobs, pending transactions, RPC endpoint state and failovers, and reconciliation differences; an opt-in `grafana/otel-lgtm` profile with a Waybill dashboard | Done (stage 5); ADR-045 | `go test ./internal/telemetry` (exports to an OTLP receiver); `make up-observability`, then the metrics and traces were queried in Prometheus and Tempo |
-| Ethereum Sepolia, Bitcoin receive | Not started (stage 5) | — |
+| Bitcoin receive: BTC invoices (held in BTC) paid to a fresh BIP84 address derived from an extended public key (any private key refuses startup); a watcher that books, settles and reverses on reorg like the EVM one; the guard checks the node's genesis block; reconciliation compares xpub custody with the node's unspent value; regtest in an opt-in Compose profile (`make up-bitcoin`), signet through an Esplora API | Done (stage 5); API 0.8.0 (ADR-045) | `go test ./internal/btc` (BIP84 vector, private keys refused), `go test ./internal/btcwatch` (incl. `TestBTCWatch_RegtestEndToEnd` on a real bitcoind), `make e2e` with `make up-bitcoin` (`bitcoin.spec.ts`) |
+| Ethereum Sepolia | Not started (stage 5) | — |
 | Public demo, "pull the plug", proof of reserves, installable app | Not started (stage 6) | — |
 
 ### Testnet deployments
@@ -92,6 +93,7 @@ make lint    # linters, formatters, type checks, codegen drift
 make down
 
 make up-observability  # make up plus metrics and traces: Grafana on :53001, dashboard "Waybill"
+make up-bitcoin        # make up plus a Bitcoin regtest node: BTC invoices and the Bitcoin watcher
 make reconcile         # check the ledger against the chain and the provider; fails on a difference
 make live-evm          # the payment path on Ethereum Sepolia, with your throwaway test key (deploys first if needed)
 ```

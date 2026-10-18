@@ -44,6 +44,7 @@ type Querier interface {
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (CreateAPIKeyRow, error)
 	// Webhook endpoints ------------------------------------------------------
 	CreateWebhookEndpoint(ctx context.Context, arg CreateWebhookEndpointParams) (WebhookEndpoint, error)
+	DeleteBTCBlocksFrom(ctx context.Context, arg DeleteBTCBlocksFromParams) error
 	DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBlocksFromParams) error
 	DisableWebhookEndpoint(ctx context.Context, arg DisableWebhookEndpointParams) (int64, error)
 	// Outbox. See docs/ARCHITECTURE.md §7.
@@ -58,6 +59,8 @@ type Querier interface {
 	// A key belongs to a contractor or to an organisation member; a removed
 	// member's keys stop working.
 	GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error)
+	GetBTCCursor(ctx context.Context, network string) (int64, error)
+	GetBTCTip(ctx context.Context, network string) (GetBTCTipRow, error)
 	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
 	// Zero when the account does not exist yet.
 	GetBalanceByCode(ctx context.Context, code string) (money.Amount, error)
@@ -104,6 +107,9 @@ type Querier interface {
 	// caller compares the returned row with what it asked for.
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
 	InsertApproval(ctx context.Context, arg InsertApprovalParams) error
+	InsertBTCAddress(ctx context.Context, arg InsertBTCAddressParams) error
+	// Nothing on conflict: the output is already recorded (I9).
+	InsertBTCPayment(ctx context.Context, arg InsertBTCPaymentParams) (BtcPayment, error)
 	InsertBatch(ctx context.Context, arg InsertBatchParams) (Batch, error)
 	InsertBatchEvent(ctx context.Context, arg InsertBatchEventParams) error
 	InsertBatchLine(ctx context.Context, arg InsertBatchLineParams) error
@@ -156,6 +162,10 @@ type Querier interface {
 	ListAccountsBreakingRule(ctx context.Context) ([]ListAccountsBreakingRuleRow, error)
 	ListActivePayouts(ctx context.Context) ([]Payout, error)
 	ListApprovals(ctx context.Context, batchID uuid.UUID) ([]Approval, error)
+	ListBTCAddresses(ctx context.Context, network string) ([]ListBTCAddressesRow, error)
+	ListBTCAddressesAll(ctx context.Context, network string) ([]string, error)
+	ListBTCAddressesByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]BtcAddress, error)
+	ListBTCBlocksBelow(ctx context.Context, arg ListBTCBlocksBelowParams) ([]ListBTCBlocksBelowRow, error)
 	ListBatchEvents(ctx context.Context, batchID uuid.UUID) ([]BatchEvent, error)
 	ListBatchLines(ctx context.Context, batchID uuid.UUID) ([]ListBatchLinesRow, error)
 	ListBatches(ctx context.Context, orgID uuid.UUID) ([]Batch, error)
@@ -163,6 +173,7 @@ type Querier interface {
 	// the vault, with their transaction's state and hash.
 	ListBatchesAwaitingFinality(ctx context.Context, network string) ([]ListBatchesAwaitingFinalityRow, error)
 	ListBatchesInState(ctx context.Context, state string) ([]Batch, error)
+	ListBookedBTCPaymentsAbove(ctx context.Context, arg ListBookedBTCPaymentsAboveParams) ([]ListBookedBTCPaymentsAboveRow, error)
 	// Payments the ledger has booked (confirmed or final) from blocks above
 	// the height read, which the balance read cannot include yet.
 	ListBookedPaymentsAbove(ctx context.Context, arg ListBookedPaymentsAboveParams) ([]ListBookedPaymentsAboveRow, error)
@@ -174,6 +185,7 @@ type Querier interface {
 	// Reconciliation reads (docs/design/reconciliation.md). Read-only, apart
 	// from storing each report.
 	ListDepositAddressesByNetwork(ctx context.Context, network string) ([]string, error)
+	ListDetectedBTCPaymentsUpTo(ctx context.Context, arg ListDetectedBTCPaymentsUpToParams) ([]ListDetectedBTCPaymentsUpToRow, error)
 	// Payments the chain holds at the height read but the ledger has not
 	// booked yet: deposits are booked at confirmation.
 	ListDetectedPaymentsUpTo(ctx context.Context, arg ListDetectedPaymentsUpToParams) ([]ListDetectedPaymentsUpToRow, error)
@@ -186,8 +198,10 @@ type Querier interface {
 	ListFinalPaymentsForInvoice(ctx context.Context, invoiceID *uuid.UUID) ([]ListFinalPaymentsForInvoiceRow, error)
 	ListFinalPaymentsSince(ctx context.Context, arg ListFinalPaymentsSinceParams) ([]ListFinalPaymentsSinceRow, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
+	ListLiveBTCPaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]BtcPayment, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListMembers(ctx context.Context, orgID uuid.UUID) ([]OrgMember, error)
+	ListOpenBTCPayments(ctx context.Context, network string) ([]BtcPayment, error)
 	ListOpenCheckouts(ctx context.Context) ([]Checkout, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListOrgDepositAddresses(ctx context.Context, orgID uuid.UUID) ([]DepositAddress, error)
@@ -229,21 +243,31 @@ type Querier interface {
 	// Locks the key's row until the caller's transaction ends. db_now is the
 	// database clock, so lease checks never depend on the caller's clock.
 	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
+	MarkBTCPaymentConfirmed(ctx context.Context, id uuid.UUID) error
+	MarkBTCPaymentFinal(ctx context.Context, id uuid.UUID) error
+	MarkBTCPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)
 	MarkCheckoutPaid(ctx context.Context, arg MarkCheckoutPaidParams) error
 	MarkConversionAccepted(ctx context.Context, arg MarkConversionAcceptedParams) error
 	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)
 	MarkProviderEventProcessed(ctx context.Context, id int64) error
+	// Bitcoin receive (docs/design/stage5.md §2).
+	// Takes the next derivation index under a row lock, so two invoices never
+	// get the same address.
+	NextBTCIndex(ctx context.Context, network string) (int32, error)
 	PaymentRefs(ctx context.Context, ids []uuid.UUID) ([]PaymentRefsRow, error)
 	PayoutRefs(ctx context.Context, ids []uuid.UUID) ([]PayoutRefsRow, error)
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
+	PruneBTCBlocks(ctx context.Context, arg PruneBTCBlocksParams) error
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
+	PutBTCBlock(ctx context.Context, arg PutBTCBlockParams) error
 	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
 	RemoveMember(ctx context.Context, arg RemoveMemberParams) (OrgMember, error)
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
+	SetBTCCursor(ctx context.Context, arg SetBTCCursorParams) error
 	SetBankRecipient(ctx context.Context, arg SetBankRecipientParams) error
 	SetBatchOutboundTx(ctx context.Context, arg SetBatchOutboundTxParams) error
 	SetBatchState(ctx context.Context, arg SetBatchStateParams) error
@@ -255,6 +279,7 @@ type Querier interface {
 	SetPayoutState(ctx context.Context, arg SetPayoutStateParams) error
 	SetPayoutTransferCode(ctx context.Context, arg SetPayoutTransferCodeParams) error
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
+	SumBTCPaymentsByState(ctx context.Context, arg SumBTCPaymentsByStateParams) (money.Amount, error)
 	// What runs have reserved and not yet recorded as paid, as a positive
 	// amount.
 	SumBatchesInFlight(ctx context.Context) (money.Amount, error)

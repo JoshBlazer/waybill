@@ -17,6 +17,8 @@ const networkNames: Record<string, string> = {
   "evm:31337": "Local test chain (Anvil)",
   "evm:84532": "Base Sepolia (test)",
   "evm:11155111": "Ethereum Sepolia (test)",
+  "btc:regtest": "Bitcoin regtest (local test chain)",
+  "btc:signet": "Bitcoin signet (test)",
 };
 
 const dateFormat = new Intl.DateTimeFormat("en-NG", {
@@ -163,7 +165,9 @@ async function PayContent({ params }: { params: Promise<{ code: string }> }) {
             className="flex flex-col gap-4"
           >
             <h2 id="send-heading" className="text-xl font-semibold">
-              Pay with stablecoin
+              {p.amount.asset === "BTC"
+                ? "Pay with bitcoin"
+                : "Pay with stablecoin"}
             </h2>
             {p.depositAddresses.map((d) => (
               <div
@@ -183,22 +187,36 @@ async function PayContent({ params }: { params: Promise<{ code: string }> }) {
                   {d.address}
                 </p>
                 <CopyButton value={d.address} label="Copy address" />
-                <p className="text-sm">
-                  Send only the test USDC token{" "}
-                  <span className="font-mono break-all text-ink-muted">
-                    {d.token}
-                  </span>{" "}
-                  on this network. Anything else sent here cannot be credited
-                  automatically.
-                </p>
-                <WalletPayButton
-                  network={d.network}
-                  token={d.token}
-                  depositAddress={d.address}
-                  minor={p.amount.minor}
-                  displayAmount={formatAmountWithAsset(p.amount)}
-                  trackingCode={p.trackingCode}
-                />
+                {d.token ? (
+                  <>
+                    <p className="text-sm">
+                      Send only the test USDC token{" "}
+                      <span className="font-mono break-all text-ink-muted">
+                        {d.token}
+                      </span>{" "}
+                      on this network. Anything else sent here cannot be
+                      credited automatically.
+                    </p>
+                    <WalletPayButton
+                      network={d.network}
+                      token={d.token}
+                      depositAddress={d.address}
+                      minor={p.amount.minor}
+                      displayAmount={formatAmountWithAsset(p.amount)}
+                      trackingCode={p.trackingCode}
+                    />
+                  </>
+                ) : (
+                  <p className="text-sm">
+                    Send test bitcoin on this network only. This address is for
+                    this invoice alone.{" "}
+                    {d.uri && (
+                      <a href={d.uri} className="underline">
+                        Open in a Bitcoin wallet
+                      </a>
+                    )}
+                  </p>
+                )}
               </div>
             ))}
             <Link href={`/t/${p.trackingCode}`} className="underline">

@@ -51,6 +51,38 @@ type Config struct {
 	// margin (WAYBILL_RATE_SPREAD_BPS, default 150).
 	Rates         string
 	RateSpreadBps int64
+	// BTCXPubs (WAYBILL_BTC_XPUB_REGTEST, WAYBILL_BTC_XPUB_SIGNET) are the
+	// extended public keys Bitcoin addresses are derived from; or, from a
+	// file, BTCXPubFiles (the same names with _FILE). Never a private key
+	// (I15, ADR-045).
+	BTCXPubs     map[safety.Network]string
+	BTCXPubFiles map[safety.Network]string
+}
+
+// btcXPubEnv names each Bitcoin network's xpub variable.
+var btcXPubEnv = map[safety.Network]string{
+	safety.BTCRegtest: "WAYBILL_BTC_XPUB_REGTEST",
+	safety.BTCSignet:  "WAYBILL_BTC_XPUB_SIGNET",
+}
+
+// BTCXPub returns the extended public key configured for n, reading the
+// file variant if that is the one set.
+func (c Config) BTCXPub(n safety.Network) (string, error) {
+	name := btcXPubEnv[n]
+	v, f := c.BTCXPubs[n], c.BTCXPubFiles[n]
+	switch {
+	case v != "" && f != "":
+		return "", fmt.Errorf("config: set %s or %s_FILE, not both", name, name)
+	case f != "":
+		raw, err := os.ReadFile(f) //nolint:gosec // a path the operator configured
+		if err != nil {
+			return "", fmt.Errorf("config: %s_FILE: %w", name, err)
+		}
+		return strings.TrimSpace(string(raw)), nil
+	case v != "":
+		return v, nil
+	}
+	return "", fmt.Errorf("config: %s is configured but %s is not set", n, name)
 }
 
 // Secret is a string that never prints: fmt and slog show "[redacted]".
@@ -100,6 +132,16 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		Rates:             withDefault(getenv("WAYBILL_RATES"), "fake"),
 		RateSpreadBps:     150,
 		SignerKeyFile:     getenv("WAYBILL_SIGNER_KEY_FILE"),
+		BTCXPubs:          map[safety.Network]string{},
+		BTCXPubFiles:      map[safety.Network]string{},
+	}
+	for n, name := range btcXPubEnv {
+		if v := getenv(name); v != "" {
+			cfg.BTCXPubs[n] = v
+		}
+		if v := getenv(name + "_FILE"); v != "" {
+			cfg.BTCXPubFiles[n] = v
+		}
 	}
 	if v := getenv("WAYBILL_RATE_SPREAD_BPS"); v != "" {
 		bps, err := strconv.ParseInt(v, 10, 64)
