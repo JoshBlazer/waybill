@@ -174,6 +174,9 @@ type Querier interface {
 	ListBatchesAwaitingFinality(ctx context.Context, network string) ([]ListBatchesAwaitingFinalityRow, error)
 	ListBatchesInState(ctx context.Context, state string) ([]Batch, error)
 	ListBookedBTCPaymentsAbove(ctx context.Context, arg ListBookedBTCPaymentsAboveParams) ([]ListBookedBTCPaymentsAboveRow, error)
+	// Payments the ledger has booked (confirmed or final) from blocks above
+	// the height read, which the balance read cannot include yet.
+	ListBookedPaymentsAbove(ctx context.Context, arg ListBookedPaymentsAboveParams) ([]ListBookedPaymentsAboveRow, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
@@ -183,6 +186,9 @@ type Querier interface {
 	// from storing each report.
 	ListDepositAddressesByNetwork(ctx context.Context, network string) ([]string, error)
 	ListDetectedBTCPaymentsUpTo(ctx context.Context, arg ListDetectedBTCPaymentsUpToParams) ([]ListDetectedBTCPaymentsUpToRow, error)
+	// Payments the chain holds at the height read but the ledger has not
+	// booked yet: deposits are booked at confirmation.
+	ListDetectedPaymentsUpTo(ctx context.Context, arg ListDetectedPaymentsUpToParams) ([]ListDetectedPaymentsUpToRow, error)
 	// Open invoices past their expiry, oldest first.
 	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
 	// Every posting on the given accounts in [from, to), oldest first.
@@ -202,9 +208,6 @@ type Querier interface {
 	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
 	ListPaidBatchesSince(ctx context.Context, arg ListPaidBatchesSinceParams) ([]ListPaidBatchesSinceRow, error)
 	ListPaidCheckoutsSince(ctx context.Context, since time.Time) ([]ListPaidCheckoutsSinceRow, error)
-	// Payments the ledger booked (at first sighting) from blocks above the
-	// height the chain was read at.
-	ListPaymentsAbove(ctx context.Context, arg ListPaymentsAboveParams) ([]ListPaymentsAboveRow, error)
 	ListPayoutEvents(ctx context.Context, invoiceID uuid.UUID) ([]PayoutEvent, error)
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
 	// Every hash broadcast for a still-pending transaction of the given

@@ -151,6 +151,51 @@ func (q *Queries) ListBatchesAwaitingFinality(ctx context.Context, network strin
 	return items, nil
 }
 
+const listBookedPaymentsAbove = `-- name: ListBookedPaymentsAbove :many
+SELECT id, to_address, amount, block_number FROM payments
+WHERE network = $1 AND state IN ('confirmed', 'final') AND block_number > $2::bigint
+ORDER BY block_number, log_index
+`
+
+type ListBookedPaymentsAboveParams struct {
+	Network string
+	Height  int64
+}
+
+type ListBookedPaymentsAboveRow struct {
+	ID          uuid.UUID
+	ToAddress   string
+	Amount      money.Amount
+	BlockNumber int64
+}
+
+// Payments the ledger has booked (confirmed or final) from blocks above
+// the height read, which the balance read cannot include yet.
+func (q *Queries) ListBookedPaymentsAbove(ctx context.Context, arg ListBookedPaymentsAboveParams) ([]ListBookedPaymentsAboveRow, error) {
+	rows, err := q.db.Query(ctx, listBookedPaymentsAbove, arg.Network, arg.Height)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBookedPaymentsAboveRow
+	for rows.Next() {
+		var i ListBookedPaymentsAboveRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ToAddress,
+			&i.Amount,
+			&i.BlockNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDepositAddressesByNetwork = `-- name: ListDepositAddressesByNetwork :many
 
 SELECT address FROM deposit_addresses WHERE network = $1 ORDER BY address
@@ -171,6 +216,51 @@ func (q *Queries) ListDepositAddressesByNetwork(ctx context.Context, network str
 			return nil, err
 		}
 		items = append(items, address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDetectedPaymentsUpTo = `-- name: ListDetectedPaymentsUpTo :many
+SELECT id, to_address, amount, block_number FROM payments
+WHERE network = $1 AND state = 'detected' AND block_number <= $2::bigint
+ORDER BY block_number, log_index
+`
+
+type ListDetectedPaymentsUpToParams struct {
+	Network string
+	Height  int64
+}
+
+type ListDetectedPaymentsUpToRow struct {
+	ID          uuid.UUID
+	ToAddress   string
+	Amount      money.Amount
+	BlockNumber int64
+}
+
+// Payments the chain holds at the height read but the ledger has not
+// booked yet: deposits are booked at confirmation.
+func (q *Queries) ListDetectedPaymentsUpTo(ctx context.Context, arg ListDetectedPaymentsUpToParams) ([]ListDetectedPaymentsUpToRow, error) {
+	rows, err := q.db.Query(ctx, listDetectedPaymentsUpTo, arg.Network, arg.Height)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDetectedPaymentsUpToRow
+	for rows.Next() {
+		var i ListDetectedPaymentsUpToRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ToAddress,
+			&i.Amount,
+			&i.BlockNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -296,51 +386,6 @@ func (q *Queries) ListPaidCheckoutsSince(ctx context.Context, since time.Time) (
 	for rows.Next() {
 		var i ListPaidCheckoutsSinceRow
 		if err := rows.Scan(&i.ID, &i.Reference, &i.PaidAmount); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listPaymentsAbove = `-- name: ListPaymentsAbove :many
-SELECT id, to_address, amount, block_number FROM payments
-WHERE network = $1 AND state IN ('detected', 'confirmed', 'final') AND block_number > $2::bigint
-ORDER BY block_number, log_index
-`
-
-type ListPaymentsAboveParams struct {
-	Network string
-	Height  int64
-}
-
-type ListPaymentsAboveRow struct {
-	ID          uuid.UUID
-	ToAddress   string
-	Amount      money.Amount
-	BlockNumber int64
-}
-
-// Payments the ledger booked (at first sighting) from blocks above the
-// height the chain was read at.
-func (q *Queries) ListPaymentsAbove(ctx context.Context, arg ListPaymentsAboveParams) ([]ListPaymentsAboveRow, error) {
-	rows, err := q.db.Query(ctx, listPaymentsAbove, arg.Network, arg.Height)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListPaymentsAboveRow
-	for rows.Next() {
-		var i ListPaymentsAboveRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ToAddress,
-			&i.Amount,
-			&i.BlockNumber,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

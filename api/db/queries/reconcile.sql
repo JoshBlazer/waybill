@@ -4,11 +4,18 @@
 -- name: ListDepositAddressesByNetwork :many
 SELECT address FROM deposit_addresses WHERE network = @network ORDER BY address;
 
--- name: ListPaymentsAbove :many
--- Payments the ledger booked (at first sighting) from blocks above the
--- height the chain was read at.
+-- name: ListDetectedPaymentsUpTo :many
+-- Payments the chain holds at the height read but the ledger has not
+-- booked yet: deposits are booked at confirmation.
 SELECT id, to_address, amount, block_number FROM payments
-WHERE network = @network AND state IN ('detected', 'confirmed', 'final') AND block_number > @height::bigint
+WHERE network = @network AND state = 'detected' AND block_number <= @height::bigint
+ORDER BY block_number, log_index;
+
+-- name: ListBookedPaymentsAbove :many
+-- Payments the ledger has booked (confirmed or final) from blocks above
+-- the height read, which the balance read cannot include yet.
+SELECT id, to_address, amount, block_number FROM payments
+WHERE network = @network AND state IN ('confirmed', 'final') AND block_number > @height::bigint
 ORDER BY block_number, log_index;
 
 -- name: ListPendingTxAttempts :many
