@@ -9,7 +9,7 @@
 #
 # Host ports bind to 127.0.0.1 and can be overridden to avoid clashes:
 # WAYBILL_PG_PORT (55432), WAYBILL_ANVIL_PORT (58545), WAYBILL_API_PORT (8080),
-# WAYBILL_WEB_PORT (3000).
+# WAYBILL_WEB_PORT (3000), WAYBILL_GRAFANA_PORT (53001, observability profile).
 name: waybill
 
 services:
@@ -93,6 +93,9 @@ services:
       # Naira rates (ADR-039): exchangerate-api reads the daily USD/NGN rate;
       # fake uses a fixed ₦1,550 per USDC.
       WAYBILL_RATES: ${WAYBILL_RATES:-exchangerate-api}
+      # Metrics and traces (ADR-045): empty means off. make up-observability
+      # points it at the lgtm container.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: "no"
@@ -164,6 +167,18 @@ services:
     command: ["-regtest=1", "-server=1", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=waybill", "-rpcpassword=waybill-local-only", "-fallbackfee=0.0002"]
     ports: ["127.0.0.1:18443:18443"]
     mem_limit: 512m
+
+  # Opt-in (ADR-045): make up-observability. One container with an OTLP
+  # collector, Tempo (traces), Prometheus (metrics) and Grafana with the
+  # Waybill dashboard. Grafana: http://localhost:53001 (local only).
+  lgtm:
+    image: grafana/otel-lgtm:0.11.0
+    profiles: [observability]
+    ports: ["127.0.0.1:${WAYBILL_GRAFANA_PORT:-53001}:3000"]
+    volumes:
+      - ./observability/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/waybill.yaml:ro
+      - ./observability/waybill-dashboard.json:/otel-lgtm/waybill-dashboard.json:ro
+    mem_limit: 1g
 
 volumes:
   pgdata:

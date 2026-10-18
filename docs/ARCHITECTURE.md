@@ -302,3 +302,19 @@ Runs first in `api`, `worker` and `watcher`.
 | Webhook replay or forgery | Signature and event-id uniqueness | Forged events are rejected. Replays are stored once and processed once. |
 | Database unavailable | Health check | The API returns 503. Workers stop leasing. Nothing proceeds without the source of truth. |
 | Signing key misuse | Single-writer lease, vault limits, pause | Limits cap the loss and pause stops outflows. See [RISKS.md](RISKS.md). |
+
+## 12. Observability
+
+OpenTelemetry, exported over OTLP/HTTP only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (ADR-045). With no endpoint, the global providers are no-ops.
+
+| Signal | What | Where |
+|---|---|---|
+| Spans | Every API request (named by route), outbox job, watcher tick, RPC call (named by method, tagged with the host of the endpoint used) and reconciliation run | `otelhttp`, `outbox`, `watcher`, `rpcpool`, `reconcile` |
+| `waybill.reconcile.differences` | Differences in the last reconciliation run. **Alert above 0.** | `reconcile` |
+| `waybill.outbox.dead`, `waybill.outbox.depth`, `waybill.outbox.jobs` | Dead jobs (each needs a person), jobs waiting, and jobs run by outcome | worker |
+| `waybill.watcher.blocks_behind`, `waybill.watcher.ticks` | How far the watcher trails the head, and ticks by outcome | watcher |
+| `waybill.rpc.endpoint.state`, `waybill.rpc.failovers` | Endpoint health (2 up, 1 lagging, 0 down) and failovers | every process using a chain |
+| `waybill.txmgr.pending` | Transactions not yet mined, per network | worker |
+| `http.server.request.duration` | API rate, errors and latency by route | `otelhttp` |
+
+`make up-observability` adds one `grafana/otel-lgtm` container (collector, Tempo, Prometheus, Loki, Grafana) with the Waybill dashboard (`deploy/observability`). No attribute carries a key, a request body or a full RPC URL.

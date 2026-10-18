@@ -13,7 +13,7 @@ GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
         lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
-        env fixtures check-fixtures reconcile
+        env fixtures check-fixtures reconcile up-observability
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -62,8 +62,12 @@ up: env contracts/lib/forge-std/src ## Build and start the local stack; waits un
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
 
+up-observability: env contracts/lib/forge-std/src ## make up plus metrics and traces in Grafana (http://localhost:53001)
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318 $(COMPOSE) --profile observability up --build --detach --wait
+	@echo "Grafana: http://localhost:$${WAYBILL_GRAFANA_PORT:-53001} (dashboard: Waybill)"
+
 down: env ## Stop the local stack and delete its volumes
-	$(COMPOSE) down --volumes --remove-orphans
+	$(COMPOSE) --profile observability down --volumes --remove-orphans
 
 logs: env ## Follow logs from the local stack
 	$(COMPOSE) logs --follow

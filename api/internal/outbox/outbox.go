@@ -16,10 +16,16 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JoshBlazer/waybill/api/internal/store"
+	"github.com/JoshBlazer/waybill/api/internal/telemetry"
 )
 
 // Job is one leased unit of work.
@@ -137,8 +143,23 @@ func (w *Worker) run(ctx context.Context, j Job) {
 	// same job while this one is still running it.
 	hctx, cancel := context.WithTimeout(ctx, w.Lease*9/10)
 	defer cancel()
-	w.record(ctx, log, j, runHandler(hctx, h, j))
+	hctx, span := telemetry.Tracer().Start(hctx, "outbox "+j.Topic,
+		trace.WithAttributes(attribute.String("waybill.topic", j.Topic), attribute.Int("waybill.attempt", j.Attempt)))
+	err := runHandler(hctx, h, j)
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "job failed")
+	}
+	span.End()
+	jobsRun.Add(ctx, 1, metric.WithAttributes(attribute.String("topic", j.Topic), attribute.String("outcome", outcome)))
+	w.record(ctx, log, j, err)
 }
+
+// jobsRun counts handled jobs by topic and outcome (ADR-045).
+var jobsRun, _ = telemetry.Meter().Int64Counter("waybill.outbox.jobs",
+	metric.WithDescription("Outbox jobs run, by topic and outcome (ok, error)."))
 
 // runHandler turns a handler panic into an error, so one bad job cannot
 // take the worker down.

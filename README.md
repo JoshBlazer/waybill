@@ -54,7 +54,8 @@ Updated in the same commit as the work it describes. "Done" means a command or t
 | Reconciliation: the ledger checked against the chain (vault and deposit balances at one block height, with money in flight listed by record; every final payment and paid run against its receipt) and against Paystack (every settled payout and paid card checkout); a balance off once is unsettled, and off twice is a difference; reports stored, worker every 15 minutes, `waybill reconcile` exits 1 on a difference | Done (stage 4); ADR-044 | `go test ./internal/batch` (`TestExitCheck_ReconciliationAfterDualApprovalRunIsClean` and four negative and in-flight tests on Anvil), `go test ./internal/payout` (provider agreement, disagreement, skipped without a key); `make reconcile` after `make e2e` in CI |
 | Invoices, receipts and the accountant export: invoice and receipt PDFs (a run's receipt names its creator, approver and sender) from a standard-library PDF writer, JSON receipts, and a CSV of the caller's own available balances with money in, money out, balance and chain or provider reference, guarded against spreadsheet formulas; each figure read from the ledger | Done (stage 4); API 0.7.0 (ADR-044) | `go test ./internal/pdf ./internal/documents ./internal/httpapi` (`documents_test.go`), `go test ./internal/payout ./internal/batch` (receipts and exports against the ledger; the run on Anvil); `make e2e` (`batches.spec.ts` downloads the run receipt and the CSV) |
 | Contractor balance and conversion: a two-minute quote on part of the USDC balance, accepted only before it expires (never re-quoted), booked with the same four legs as an invoice payout's conversion, and sent to the bank through the existing payout pipeline; concurrent accepts cannot overdraw | Done (stage 4); API 0.7.0 (ADR-044) | `go test ./internal/conversion` (incl. expiry, concurrent accepts, the payout sent and reconciled), `go test ./internal/httpapi` (`conversions_test.go`); `make e2e` (`conversion.spec.ts`) |
-| Ethereum Sepolia, Bitcoin receive, metrics and traces | Not started (stage 5) | — |
+| Metrics and traces: OpenTelemetry over OTLP/HTTP, off unless an endpoint is set; spans for API requests, outbox jobs, watcher ticks, RPC calls and reconciliation; metrics for request rate and latency, watcher blocks behind, outbox depth and dead jobs, pending transactions, RPC endpoint state and failovers, and reconciliation differences; an opt-in `grafana/otel-lgtm` profile with a Waybill dashboard | Done (stage 5); ADR-045 | `go test ./internal/telemetry` (exports to an OTLP receiver); `make up-observability`, then the metrics and traces were queried in Prometheus and Tempo |
+| Ethereum Sepolia, Bitcoin receive | Not started (stage 5) | — |
 | Public demo, "pull the plug", proof of reserves, installable app | Not started (stage 6) | — |
 
 ### Testnet deployments
@@ -89,6 +90,9 @@ make test    # Go (incl. Docker-backed integration), Foundry, Vitest
 make e2e     # Playwright against the running stack (pulls the Playwright image once)
 make lint    # linters, formatters, type checks, codegen drift
 make down
+
+make up-observability  # make up plus metrics and traces: Grafana on :53001, dashboard "Waybill"
+make reconcile         # check the ledger against the chain and the provider; fails on a difference
 ```
 
 - API health: <http://localhost:8080/v1/health>

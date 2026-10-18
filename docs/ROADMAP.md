@@ -86,7 +86,7 @@ Result (2026-10-18): passed. `TestExitCheck_BatchWithDualApprovalCompletes` and 
 - [ ] Ethereum Sepolia as a second EVM network.
 - [ ] Bitcoin receive on regtest (opt-in Compose profile) and signet: xpub-only address derivation, watcher, reorgs.
 - [x] RPC failover and node health monitoring ([design/stage5.md](design/stage5.md) §3, ADR-045).
-- [ ] Metrics and traces (OpenTelemetry; exporter chosen in a decision record).
+- [x] Metrics and traces (OpenTelemetry over OTLP; opt-in `grafana/otel-lgtm` profile; ADR-045).
 
 **Exit check:** the same e2e path passes on Ethereum Sepolia and Bitcoin regtest, and failover is proven by a test that kills the primary RPC.
 

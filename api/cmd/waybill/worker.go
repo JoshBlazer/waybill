@@ -54,6 +54,9 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := observeQueues(pool); err != nil {
+		return err
+	}
 	tokens := make(map[safety.Network]string, len(chains))
 	deps := make(map[safety.Network]deployments.Deployment, len(chains))
 	for n, c := range chains {

@@ -18,6 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,6 +39,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/statemachine"
 	"github.com/JoshBlazer/waybill/api/internal/store"
+	"github.com/JoshBlazer/waybill/api/internal/telemetry"
 )
 
 // transferTopic is keccak256("Transfer(address,address,uint256)").
@@ -103,10 +109,25 @@ func (w *Watcher) Run(ctx context.Context) error {
 
 // Tick undoes any reorg of blocks already read, scans new blocks for
 // payments, then advances payments that have enough confirmations.
-func (w *Watcher) Tick(ctx context.Context) error {
+func (w *Watcher) Tick(ctx context.Context) (err error) {
+	net := attribute.String("network", string(w.Cfg.Network))
+	ctx, span := telemetry.Tracer().Start(ctx, "watcher tick", trace.WithAttributes(net))
+	defer func() {
+		outcome := "ok"
+		if err != nil {
+			outcome = "error"
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "tick failed")
+		}
+		span.End()
+		watcherTicks.Add(ctx, 1, metric.WithAttributes(net, attribute.String("outcome", outcome)))
+	}()
 	head, err := w.Chain.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("head: %w", err) // unknown, not "nothing happened"
+	}
+	if next, cerr := store.New(w.Pool).GetChainCursor(ctx, string(w.Cfg.Network)); cerr == nil && uint64(next) <= head+1 { //nolint:gosec // cursors are positive
+		watcherBehind.Record(ctx, int64(head+1)-next, metric.WithAttributes(net)) //nolint:gosec // block heights fit
 	}
 	if err := w.checkReorg(ctx, head); err != nil {
 		return fmt.Errorf("reorg check: %w", err)
@@ -721,3 +742,11 @@ func (w *Watcher) accounts(ctx context.Context, tx pgx.Tx, kind string, id uuid.
 }
 
 func lowerHex(s string) string { return strings.ToLower(s) }
+
+// Watcher metrics (ADR-045).
+var (
+	watcherTicks, _ = telemetry.Meter().Int64Counter("waybill.watcher.ticks",
+		metric.WithDescription("Watcher ticks, by network and outcome (ok, error)."))
+	watcherBehind, _ = telemetry.Meter().Int64Gauge("waybill.watcher.blocks_behind",
+		metric.WithDescription("Blocks between the chain head and the watcher's cursor at the start of a tick."))
+)
