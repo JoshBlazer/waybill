@@ -121,3 +121,32 @@ export const setPayoutWallet = (
     network,
     address,
   });
+
+// Contractor balance and conversion (stage 4, ADR-044).
+export type Balance = components["schemas"]["Balance"];
+export type Conversion = components["schemas"]["Conversion"];
+
+export const getBalance = (b: string, k: string) =>
+  request<Balance>(b, k, "GET", "/v1/me/balance");
+
+export const getConversion = (b: string, k: string, id: string) =>
+  request<Conversion>(
+    b,
+    k,
+    "GET",
+    `/v1/me/conversions/${encodeURIComponent(id)}`,
+  );
+
+export const quoteConversion = (b: string, k: string, amount: string) =>
+  request<Conversion>(b, k, "POST", "/v1/me/conversions", { amount });
+
+/** Accepting is safe to repeat: the key is fixed per conversion. */
+export const acceptConversion = (b: string, k: string, id: string) =>
+  request<Conversion>(
+    b,
+    k,
+    "POST",
+    `/v1/me/conversions/${encodeURIComponent(id)}/accept`,
+    undefined,
+    { "Idempotency-Key": `accept-${id}` },
+  );

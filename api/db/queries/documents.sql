@@ -52,3 +52,8 @@ WHERE c.id = ANY(@ids::uuid[]);
 SELECT b.id, t.mined_hash
 FROM batches b LEFT JOIN outbound_txs t ON t.id = b.outbound_tx_id
 WHERE b.id = ANY(@ids::uuid[]);
+
+-- name: ConversionRefs :many
+SELECT c.id, po.reference
+FROM conversions c LEFT JOIN payouts po ON po.conversion_id = c.id
+WHERE c.id = ANY(@ids::uuid[]);

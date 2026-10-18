@@ -74,7 +74,7 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 - [x] Payer organisations, members and roles ([design/teams.md](design/teams.md), ADR-043), with funding addresses.
 - [x] Batch pay: build, check, approve (approver ≠ creator), send through `BatchPayout`.
 - [x] Invoices, receipts and accountant export (CSV and PDF) ([design/exports.md](design/exports.md), ADR-044).
-- [ ] Contractor balance and conversion at a quoted rate.
+- [x] Contractor balance and conversion at a quoted rate ([design/conversion.md](design/conversion.md), ADR-044).
 - [x] Reconciliation job: ledger against chain and provider, with a report ([design/reconciliation.md](design/reconciliation.md), ADR-044).
 
 **Exit check:** an automated test runs a batch with dual approval to completion, and the reconciliation report shows zero differences.

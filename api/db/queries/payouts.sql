@@ -14,7 +14,7 @@ LIMIT 100;
 
 -- name: InsertPayout :one
 INSERT INTO payouts (id, invoice_id, contractor_id, state, source_asset, source_amount, reference)
-VALUES (@id, @invoice_id, @contractor_id, 'queued', @source_asset, @source_amount, @reference)
+VALUES (@id, @invoice_id::uuid, @contractor_id, 'queued', @source_asset, @source_amount, @reference)
 ON CONFLICT (invoice_id) DO NOTHING
 RETURNING *;
 
@@ -28,7 +28,7 @@ LIMIT 100;
 SELECT * FROM payouts WHERE id = @id FOR UPDATE;
 
 -- name: GetPayoutByInvoice :one
-SELECT * FROM payouts WHERE invoice_id = @invoice_id;
+SELECT * FROM payouts WHERE invoice_id = @invoice_id::uuid;
 
 -- name: GetPayoutByReference :one
 SELECT * FROM payouts WHERE reference = @reference;
@@ -48,7 +48,7 @@ INSERT INTO payout_events (payout_id, invoice_id, type, from_state, to_state, da
 VALUES (@payout_id, @invoice_id, @type, @from_state, @to_state, @data);
 
 -- name: ListPayoutEvents :many
-SELECT * FROM payout_events WHERE invoice_id = @invoice_id ORDER BY id;
+SELECT * FROM payout_events WHERE invoice_id = @invoice_id::uuid ORDER BY id;
 
 -- name: FirstPaymentDetectedAt :one
 -- When money first arrived for the invoice, by chain or by card.

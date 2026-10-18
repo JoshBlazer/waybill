@@ -76,6 +76,37 @@ func (q *Queries) CheckoutRefs(ctx context.Context, ids []uuid.UUID) ([]Checkout
 	return items, nil
 }
 
+const conversionRefs = `-- name: ConversionRefs :many
+SELECT c.id, po.reference
+FROM conversions c LEFT JOIN payouts po ON po.conversion_id = c.id
+WHERE c.id = ANY($1::uuid[])
+`
+
+type ConversionRefsRow struct {
+	ID        uuid.UUID
+	Reference *string
+}
+
+func (q *Queries) ConversionRefs(ctx context.Context, ids []uuid.UUID) ([]ConversionRefsRow, error) {
+	rows, err := q.db.Query(ctx, conversionRefs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ConversionRefsRow
+	for rows.Next() {
+		var i ConversionRefsRow
+		if err := rows.Scan(&i.ID, &i.Reference); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPaidCheckoutForInvoice = `-- name: GetPaidCheckoutForInvoice :one
 SELECT reference, paid_amount, paid_at FROM checkouts
 WHERE invoice_id = $1 AND state = 'paid'

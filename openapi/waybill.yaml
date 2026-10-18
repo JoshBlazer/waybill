@@ -1098,6 +1098,105 @@ paths:
         "422":
           $ref: "#/components/responses/Problem"
 
+  /v1/me/balance:
+    get:
+      operationId: getBalance
+      tags: [payouts]
+      summary: The contractor's balances and recent conversions.
+      security:
+        - contractorKey: []
+      responses:
+        "200":
+          description: The balances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Balance"
+        "401":
+          $ref: "#/components/responses/Problem"
+
+  /v1/me/conversions:
+    post:
+      operationId: quoteConversion
+      tags: [payouts]
+      summary: Quote a conversion of USDC balance to naira.
+      description: |
+        Fixes a rate and the naira amount until `expiresAt` (two minutes).
+        Nothing moves until the quote is accepted. Needs a verified bank
+        account and at least the amount available; the minimum is 1 USDC.
+      security:
+        - contractorKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversionRequest"
+      responses:
+        "201":
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversion"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+
+  /v1/me/conversions/{id}:
+    get:
+      operationId: getConversion
+      tags: [payouts]
+      summary: One conversion and its payout.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The conversion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversion"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/me/conversions/{id}/accept:
+    post:
+      operationId: acceptConversion
+      tags: [payouts]
+      summary: Accept a quote before it expires; the naira is sent to the bank.
+      description: |
+        Books the conversion and queues a payout to the verified bank
+        account. After `expiresAt` it is refused with 409 `quote-expired`:
+        ask for a new quote. Accepting an accepted conversion returns it.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: The accepted conversion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversion"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     contractorKey:
@@ -1144,6 +1243,78 @@ components:
             $ref: "#/components/schemas/Problem"
 
   schemas:
+    ConversionRequest:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount:
+          type: string
+          description: USDC to convert, as a decimal string, at least "1".
+          example: "40.50"
+
+    Conversion:
+      type: object
+      additionalProperties: false
+      required: [id, state, amount, naira, rate, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [quoted, expired, accepted]
+        amount:
+          $ref: "#/components/schemas/Amount"
+        naira:
+          $ref: "#/components/schemas/Amount"
+        rate:
+          description: Naira per 1 USDC.
+          allOf:
+            - $ref: "#/components/schemas/Amount"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        payout:
+          $ref: "#/components/schemas/ConversionPayout"
+
+    ConversionPayout:
+      type: object
+      additionalProperties: false
+      required: [state, reference]
+      properties:
+        state:
+          type: string
+          description: The payout's state, as on an invoice payout.
+        reference:
+          type: string
+
+    Balance:
+      type: object
+      additionalProperties: false
+      required: [usdcAvailable, usdcPending, nairaOnItsWay, conversions]
+      properties:
+        usdcAvailable:
+          $ref: "#/components/schemas/Amount"
+        usdcPending:
+          description: Received, not yet final.
+          allOf:
+            - $ref: "#/components/schemas/Amount"
+        nairaOnItsWay:
+          description: Converted, not yet sent to the bank.
+          allOf:
+            - $ref: "#/components/schemas/Amount"
+        conversions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Conversion"
+
     InvoiceReceipt:
       type: object
       additionalProperties: false

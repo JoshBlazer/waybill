@@ -22,12 +22,14 @@ import (
 	"time"
 
 	"github.com/JoshBlazer/waybill/api/internal/config"
+	"github.com/JoshBlazer/waybill/api/internal/conversion"
 	"github.com/JoshBlazer/waybill/api/internal/db"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/httpapi"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/org"
+	"github.com/JoshBlazer/waybill/api/internal/rates"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 )
@@ -127,8 +129,11 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Checkout: nr.checkout(pool, tokens, cfg.WebURL, log),
 			Org:      &org.Service{Pool: pool, Deployments: deps},
 			Batches:  batchService(pool, chains, log),
-			Tokens:   tokens,
-			WebURL:   cfg.WebURL,
+			Conversions: &conversion.Service{Pool: pool, Quoter: &rates.Quoter{
+				Provider: nr.quoter.Provider, SpreadBps: nr.quoter.SpreadBps, TTL: conversion.QuoteTTL, MaxAge: nr.quoter.MaxAge,
+			}},
+			Tokens: tokens,
+			WebURL: cfg.WebURL,
 
 			WebhookAllowPrivate: cfg.WebhookAllowPrivate,
 			Broker:              broker,

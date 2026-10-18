@@ -20,6 +20,7 @@ import (
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/conversion"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/httpapi"
@@ -96,14 +97,15 @@ func setup(t *testing.T) env {
 			Deployments: map[safety.Network]deployments.Deployment{"evm:31337": anvilDeployment}, Now: time.Now,
 			Quoter: &rates.Quoter{Provider: fx, SpreadBps: 150, TTL: 48 * time.Hour, MaxAge: 26 * time.Hour},
 		},
-		Banks:    resolver,
-		Resolver: resolver,
-		Paystack: ps,
-		Tokens:   map[safety.Network]string{"evm:31337": evm.NormalizeAddress(anvilDeployment.Token)},
-		WebURL:   "http://web.test",
-		Broker:   broker,
-		Version:  "test",
-		Log:      log,
+		Conversions: &conversion.Service{Pool: pool, Quoter: &rates.Quoter{Provider: fx, TTL: conversion.QuoteTTL, MaxAge: 26 * time.Hour}},
+		Banks:       resolver,
+		Resolver:    resolver,
+		Paystack:    ps,
+		Tokens:      map[safety.Network]string{"evm:31337": evm.NormalizeAddress(anvilDeployment.Token)},
+		WebURL:      "http://web.test",
+		Broker:      broker,
+		Version:     "test",
+		Log:         log,
 	}
 	srv := httptest.NewServer(httpapi.NewHandler(s))
 	t.Cleanup(srv.Close)

@@ -29,7 +29,7 @@ func (q *Queries) FirstPaymentDetectedAt(ctx context.Context, invoice uuid.UUID)
 }
 
 const getPayoutByInvoice = `-- name: GetPayoutByInvoice :one
-SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at FROM payouts WHERE invoice_id = $1
+SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at, conversion_id FROM payouts WHERE invoice_id = $1::uuid
 `
 
 func (q *Queries) GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error) {
@@ -49,12 +49,13 @@ func (q *Queries) GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (
 		&i.Failure,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ConversionID,
 	)
 	return i, err
 }
 
 const getPayoutByReference = `-- name: GetPayoutByReference :one
-SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at FROM payouts WHERE reference = $1
+SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at, conversion_id FROM payouts WHERE reference = $1
 `
 
 func (q *Queries) GetPayoutByReference(ctx context.Context, reference string) (Payout, error) {
@@ -74,15 +75,16 @@ func (q *Queries) GetPayoutByReference(ctx context.Context, reference string) (P
 		&i.Failure,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ConversionID,
 	)
 	return i, err
 }
 
 const insertPayout = `-- name: InsertPayout :one
 INSERT INTO payouts (id, invoice_id, contractor_id, state, source_asset, source_amount, reference)
-VALUES ($1, $2, $3, 'queued', $4, $5, $6)
+VALUES ($1, $2::uuid, $3, 'queued', $4, $5, $6)
 ON CONFLICT (invoice_id) DO NOTHING
-RETURNING id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at
+RETURNING id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at, conversion_id
 `
 
 type InsertPayoutParams struct {
@@ -118,6 +120,7 @@ func (q *Queries) InsertPayout(ctx context.Context, arg InsertPayoutParams) (Pay
 		&i.Failure,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ConversionID,
 	)
 	return i, err
 }
@@ -129,7 +132,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 
 type InsertPayoutEventParams struct {
 	PayoutID  uuid.UUID
-	InvoiceID uuid.UUID
+	InvoiceID *uuid.UUID
 	Type      string
 	FromState string
 	ToState   string
@@ -149,7 +152,7 @@ func (q *Queries) InsertPayoutEvent(ctx context.Context, arg InsertPayoutEventPa
 }
 
 const listActivePayouts = `-- name: ListActivePayouts :many
-SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at FROM payouts
+SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at, conversion_id FROM payouts
 WHERE state IN ('queued', 'converted', 'submitting', 'unknown', 'submitted')
 ORDER BY created_at
 LIMIT 100
@@ -178,6 +181,7 @@ func (q *Queries) ListActivePayouts(ctx context.Context) ([]Payout, error) {
 			&i.Failure,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ConversionID,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +194,7 @@ func (q *Queries) ListActivePayouts(ctx context.Context) ([]Payout, error) {
 }
 
 const listPayoutEvents = `-- name: ListPayoutEvents :many
-SELECT id, payout_id, invoice_id, type, from_state, to_state, data, created_at FROM payout_events WHERE invoice_id = $1 ORDER BY id
+SELECT id, payout_id, invoice_id, type, from_state, to_state, data, created_at FROM payout_events WHERE invoice_id = $1::uuid ORDER BY id
 `
 
 func (q *Queries) ListPayoutEvents(ctx context.Context, invoiceID uuid.UUID) ([]PayoutEvent, error) {
@@ -270,7 +274,7 @@ func (q *Queries) ListSettledNairaWithoutPayout(ctx context.Context) ([]ListSett
 }
 
 const lockPayout = `-- name: LockPayout :one
-SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at FROM payouts WHERE id = $1 FOR UPDATE
+SELECT id, invoice_id, contractor_id, state, source_asset, source_amount, naira_amount, rate_quote_id, reference, transfer_code, failure, created_at, updated_at, conversion_id FROM payouts WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockPayout(ctx context.Context, id uuid.UUID) (Payout, error) {
@@ -290,6 +294,7 @@ func (q *Queries) LockPayout(ctx context.Context, id uuid.UUID) (Payout, error) 
 		&i.Failure,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ConversionID,
 	)
 	return i, err
 }

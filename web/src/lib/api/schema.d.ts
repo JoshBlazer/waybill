@@ -719,10 +719,125 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/me/balance": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The contractor's balances and recent conversions. */
+    get: operations["getBalance"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/me/conversions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Quote a conversion of USDC balance to naira.
+     * @description Fixes a rate and the naira amount until `expiresAt` (two minutes).
+     *     Nothing moves until the quote is accepted. Needs a verified bank
+     *     account and at least the amount available; the minimum is 1 USDC.
+     */
+    post: operations["quoteConversion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/me/conversions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One conversion and its payout. */
+    get: operations["getConversion"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/me/conversions/{id}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Accept a quote before it expires; the naira is sent to the bank.
+     * @description Books the conversion and queues a payout to the verified bank
+     *     account. After `expiresAt` it is refused with 409 `quote-expired`:
+     *     ask for a new quote. Accepting an accepted conversion returns it.
+     */
+    post: operations["acceptConversion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ConversionRequest: {
+      /**
+       * @description USDC to convert, as a decimal string, at least "1".
+       * @example 40.50
+       */
+      amount: string;
+    };
+    Conversion: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      state: "quoted" | "expired" | "accepted";
+      amount: components["schemas"]["Amount"];
+      naira: components["schemas"]["Amount"];
+      /** @description Naira per 1 USDC. */
+      rate: components["schemas"]["Amount"];
+      /** Format: date-time */
+      expiresAt: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      acceptedAt?: string;
+      payout?: components["schemas"]["ConversionPayout"];
+    };
+    ConversionPayout: {
+      /** @description The payout's state, as on an invoice payout. */
+      state: string;
+      reference: string;
+    };
+    Balance: {
+      usdcAvailable: components["schemas"]["Amount"];
+      /** @description Received, not yet final. */
+      usdcPending: components["schemas"]["Amount"];
+      /** @description Converted, not yet sent to the bank. */
+      nairaOnItsWay: components["schemas"]["Amount"];
+      conversions: components["schemas"]["Conversion"][];
+    };
     InvoiceReceipt: {
       /** Format: uuid */
       invoiceId: string;
@@ -2343,6 +2458,107 @@ export interface operations {
         };
       };
       401: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  getBalance: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The balances. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Balance"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  quoteConversion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConversionRequest"];
+      };
+    };
+    responses: {
+      /** @description The quote. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Conversion"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+      503: components["responses"]["Problem"];
+    };
+  };
+  getConversion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The conversion. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Conversion"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  acceptConversion: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The accepted conversion. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Conversion"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
       422: components["responses"]["Problem"];
     };
   };

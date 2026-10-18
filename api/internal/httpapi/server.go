@@ -14,6 +14,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
 	"github.com/JoshBlazer/waybill/api/internal/batch"
 	"github.com/JoshBlazer/waybill/api/internal/checkout"
+	"github.com/JoshBlazer/waybill/api/internal/conversion"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/org"
 	"github.com/JoshBlazer/waybill/api/internal/paystack"
@@ -40,13 +41,14 @@ type Server struct {
 	// endpoints. Local development on Anvil only.
 	WebhookAllowPrivate bool
 
-	Banks    bankverify.BankLister // payout banks
-	Resolver bankverify.Resolver   // bank account names (ADR-040)
-	Paystack *paystack.Client      // webhook signatures; nil when no key is configured
-	Checkout *checkout.Service     // card and bank pay-in; nil disables it
-	Org      *org.Service          // payer organisations (stage 4)
-	Batches  *batch.Service        // contractor wallets and batch runs (stage 4)
-	Now      func() time.Time      // nil means time.Now
+	Banks       bankverify.BankLister // payout banks
+	Resolver    bankverify.Resolver   // bank account names (ADR-040)
+	Paystack    *paystack.Client      // webhook signatures; nil when no key is configured
+	Checkout    *checkout.Service     // card and bank pay-in; nil disables it
+	Org         *org.Service          // payer organisations (stage 4)
+	Batches     *batch.Service        // contractor wallets and batch runs (stage 4)
+	Conversions *conversion.Service   // contractor balance conversion (stage 4)
+	Now         func() time.Time      // nil means time.Now
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -107,6 +109,10 @@ var authenticatedOperations = map[string]bool{
 	"GetInvoiceDocument":    true,
 	"GetInvoiceReceipt":     true,
 	"GetInvoiceReceiptPdf":  true,
+	"GetBalance":            true,
+	"QuoteConversion":       true,
+	"GetConversion":         true,
+	"AcceptConversion":      true,
 }
 
 // memberOperations lists the operations that need an organisation
