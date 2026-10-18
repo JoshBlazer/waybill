@@ -117,6 +117,7 @@ func (p *page) note(s string) {
 		p.d.Text(left, p.y, 8, false, line)
 		p.y += 12
 	}
+	p.y += 6 // set the next row apart from this note
 }
 
 func (p *page) bytes() []byte { return p.d.Bytes() }
