@@ -228,7 +228,7 @@ Each invariant names the test that proves it. A test that does not exist yet car
 | I14 | **Incoming webhooks are verified, stored raw and processed once.** | Signature check before parse; unique `(provider, event_id)` | `TestPaystackWebhook_BadSignatureRejected`, `TestPaystackWebhook_ReplayProcessedOnce`, `TestPayout_CallbacksAreCheckedAndProcessedOnce` *(exist)* |
 | I15 | **Keys are never logged.** Bitcoin holds only an xpub. | `txmgr.Signer` interface; `LocalSigner` shows only its address in `String()`/`GoString()`/`LogValue()`; no private-key config for BTC | `TestSecret_NeverAppearsInLogs` *(exists)*; `TestBTCConfig_RejectsPrivateKey` *(stage 5)* |
 | I16 | **On-chain payout is at most once per payout id.** | `Vault.payout` records `paid[payoutId]` and reverts on reuse; `BatchPayout` goes through it | `test_RevertWhen_PayoutIdReused`, `testFuzz_DailyTotalNeverExceedsLimit` in `contracts/test/Vault.t.sol` *(exist)*; invariant tests `invariant_VaultOutflowEqualsRecordedPayouts`, `invariant_PayoutIdPaidAtMostOnce`, `invariant_DailyTotalWithinLimit`, `invariant_BatchesAllOrNothing` in `contracts/test/BatchPayout.invariant.t.sol` *(exist)* |
-| I17 | **Approver ≠ creator for runs over threshold.** | SQL `CHECK` plus API check | `TestBatch_SelfApprovalRejected` *(stage 4)* |
+| I17 | **Approver ≠ creator for runs over threshold.** | SQL `CHECK` plus API check | `TestBatch_SelfApprovalRejected` (API and a direct SQL insert) *(exists)* |
 | I18 | **Reserves ≥ liabilities.** | Reconciliation job; proof-of-reserves page | `TestReconcile_DetectsShortfall` *(stage 4)* |
 | I19 | **The API contract cannot drift.** | Generated Go and TS types; `make lint` fails on uncommitted codegen diff | CI job `codegen` *(stage 0, exists)* |
 

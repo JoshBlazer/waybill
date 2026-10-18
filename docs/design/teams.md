@@ -70,6 +70,8 @@ And on the run as a whole:
 | `confirming` | `final` | `paid` (terminal) |
 | `confirming` | `reorged_out` | `sending` (the transaction manager rebroadcasts the same transaction) |
 
+Implementation note: the transaction manager does not keep signed transactions, so `reorged_out` is not raised automatically yet. A mined run whose receipt disappears is logged for a person and stays `confirming`; nothing is recorded as paid (RISKS).
+
 - The machine is pure: `statemachine.BatchTransition`, with an exhaustive pair table test, like `InvoiceTransition` and `PayoutTransition`.
 - Written test-first (CLAUDE.md), under the owner waiver of 2026-10-18.
 

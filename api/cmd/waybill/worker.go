@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/JoshBlazer/waybill/api/internal/batch"
 	"github.com/JoshBlazer/waybill/api/internal/config"
 	"github.com/JoshBlazer/waybill/api/internal/db"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
@@ -104,6 +105,12 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 		log.Warn("worker: no signing key configured; sweeps are off")
 	default:
 		sweeper := &sweep.Sweeper{Pool: pool, Deployments: deps, Asset: money.USDC, Log: log, Managers: map[safety.Network]*txmgr.Manager{}}
+		batches := &batch.Sender{
+			Service:  batchService(pool, chains, log),
+			Managers: map[safety.Network]*txmgr.Manager{},
+			Finality: map[safety.Network]uint64{},
+			Chains:   map[safety.Network]batch.ChainReader{},
+		}
 		for n, c := range chains {
 			policy := watchPolicy(n)
 			stuckAfter := time.Minute
@@ -112,15 +119,23 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 			}
 			m := &txmgr.Manager{
 				Pool: pool, Chain: c.client, Signer: signer, Network: n, ChainID: big.NewInt(c.deployment.ChainID),
-				Owner: owner, Log: log.With("network", n), Hooks: map[string]txmgr.Hook{sweep.Purpose: sweeper.Hook(n)},
+				Owner: owner, Log: log.With("network", n),
+				Hooks:    map[string]txmgr.Hook{sweep.Purpose: sweeper.Hook(n), batch.Purpose: batches.Service.Hook(n)},
 				LeaseTTL: time.Minute, MaxFeeCap: maxFeeCap, BumpPercent: 10,
 				StuckAfter: stuckAfter, Confirmations: policy.Confirmations,
 			}
 			sweeper.Managers[n] = m
+			batches.Managers[n], batches.Chains[n] = m, c.client
+			if !policy.FinalizedTag {
+				batches.Finality[n] = policy.Finality
+			}
 			run(func() { m.Run(ctx, policy.PollInterval) })
 			run(func() { enqueueSweeps(ctx, pool, n, log) })
 		}
 		w.Handlers[sweep.Topic] = sweeper.Handle
+		w.Handlers[batch.Topic] = batches.Handle
+		w.Policies[batch.Topic] = batch.Policy()
+		run(func() { batches.Run(ctx, 5*time.Second) })
 		log.Info("worker: signing as", "signer", signer)
 	}
 	log.Info("worker started", "owner", owner, "topics", len(w.Handlers))

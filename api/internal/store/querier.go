@@ -33,6 +33,9 @@ type Querier interface {
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	// Only the current lease holder can finish a job.
 	CompleteOutbox(ctx context.Context, arg CompleteOutboxParams) (int64, error)
+	// Lines to this contractor with this reference that this organisation has
+	// paid or may still pay in the last 30 days.
+	CountRecentLinePayments(ctx context.Context, arg CountRecentLinePaymentsParams) (int64, error)
 	// API key management and outgoing webhooks. See ADR-038.
 	// API keys ---------------------------------------------------------------
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (CreateAPIKeyRow, error)
@@ -58,10 +61,17 @@ type Querier interface {
 	// Naira settlement. See ADR-041.
 	// Bank accounts ------------------------------------------------------------
 	GetBankAccount(ctx context.Context, contractorID uuid.UUID) (ContractorBankAccount, error)
+	GetBatch(ctx context.Context, arg GetBatchParams) (Batch, error)
+	GetBatchByOutboundTx(ctx context.Context, outboundTxID *uuid.UUID) (Batch, error)
+	GetBatchForUpdate(ctx context.Context, id uuid.UUID) (Batch, error)
+	GetBatchLineByTrackingCode(ctx context.Context, trackingCode string) (GetBatchLineByTrackingCodeRow, error)
 	GetChainCursor(ctx context.Context, network string) (int64, error)
 	GetChainTip(ctx context.Context, network string) (GetChainTipRow, error)
 	GetCheckoutByReference(ctx context.Context, reference string) (Checkout, error)
 	GetContractor(ctx context.Context, id uuid.UUID) (Contractor, error)
+	GetContractorByID(ctx context.Context, id uuid.UUID) (Contractor, error)
+	// Contractor payout wallets and batch runs (docs/design/teams.md).
+	GetContractorWallet(ctx context.Context, arg GetContractorWalletParams) (ContractorWallet, error)
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
 	GetInvoiceForContractor(ctx context.Context, arg GetInvoiceForContractorParams) (GetInvoiceForContractorRow, error)
@@ -73,6 +83,7 @@ type Querier interface {
 	// Card and bank checkout. See ADR-041.
 	GetOpenCheckout(ctx context.Context, invoiceID uuid.UUID) (Checkout, error)
 	GetOrg(ctx context.Context, id uuid.UUID) (PayerOrg, error)
+	GetOutboundTx(ctx context.Context, id uuid.UUID) (OutboundTx, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
 	GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error)
@@ -86,6 +97,10 @@ type Querier interface {
 	// Creates an account, or returns the existing one with the same code. The
 	// caller compares the returned row with what it asked for.
 	InsertAccount(ctx context.Context, arg InsertAccountParams) (InsertAccountRow, error)
+	InsertApproval(ctx context.Context, arg InsertApprovalParams) error
+	InsertBatch(ctx context.Context, arg InsertBatchParams) (Batch, error)
+	InsertBatchEvent(ctx context.Context, arg InsertBatchEventParams) error
+	InsertBatchLine(ctx context.Context, arg InsertBatchLineParams) error
 	// Another open checkout for the invoice wins the race: no row is returned.
 	InsertCheckout(ctx context.Context, arg InsertCheckoutParams) (Checkout, error)
 	InsertDepositAddress(ctx context.Context, arg InsertDepositAddressParams) error
@@ -121,6 +136,11 @@ type Querier interface {
 	LeaseOutbox(ctx context.Context, arg LeaseOutboxParams) ([]LeaseOutboxRow, error)
 	ListAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]ListAPIKeysRow, error)
 	ListActivePayouts(ctx context.Context) ([]Payout, error)
+	ListApprovals(ctx context.Context, batchID uuid.UUID) ([]Approval, error)
+	ListBatchEvents(ctx context.Context, batchID uuid.UUID) ([]BatchEvent, error)
+	ListBatchLines(ctx context.Context, batchID uuid.UUID) ([]ListBatchLinesRow, error)
+	ListBatches(ctx context.Context, orgID uuid.UUID) ([]Batch, error)
+	ListBatchesInState(ctx context.Context, state string) ([]Batch, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
@@ -177,6 +197,8 @@ type Querier interface {
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
 	SetBankRecipient(ctx context.Context, arg SetBankRecipientParams) error
+	SetBatchOutboundTx(ctx context.Context, arg SetBatchOutboundTxParams) error
+	SetBatchState(ctx context.Context, arg SetBatchStateParams) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	SetCheckoutURL(ctx context.Context, arg SetCheckoutURLParams) (Checkout, error)
 	SetMemberRoles(ctx context.Context, arg SetMemberRolesParams) (OrgMember, error)
@@ -185,6 +207,9 @@ type Querier interface {
 	SetPayoutState(ctx context.Context, arg SetPayoutStateParams) error
 	SetPayoutTransferCode(ctx context.Context, arg SetPayoutTransferCodeParams) error
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
+	// What runs have reserved and not yet recorded as paid, as a positive
+	// amount.
+	SumBatchesInFlight(ctx context.Context) (money.Amount, error)
 	// Total of an organisation funding payments in the given states.
 	SumOrgPaymentsByState(ctx context.Context, arg SumOrgPaymentsByStateParams) (money.Amount, error)
 	// Total of an invoice's payments that have reached at least the given state.
@@ -202,6 +227,9 @@ type Querier interface {
 	UpsertChainToken(ctx context.Context, arg UpsertChainTokenParams) error
 	// Contractors and API keys -----------------------------------------------
 	UpsertContractor(ctx context.Context, arg UpsertContractorParams) (Contractor, error)
+	// Saving the same address again changes nothing; a new address starts a
+	// new 24-hour wait before it can be paid.
+	UpsertContractorWallet(ctx context.Context, arg UpsertContractorWalletParams) (ContractorWallet, error)
 	UpsertMember(ctx context.Context, arg UpsertMemberParams) (OrgMember, error)
 	// Payer organisations, members, funding and contractor wallets
 	// (docs/design/teams.md).

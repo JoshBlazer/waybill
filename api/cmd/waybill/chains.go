@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
+	"github.com/JoshBlazer/waybill/api/internal/batch"
 	"github.com/JoshBlazer/waybill/api/internal/config"
 	"github.com/JoshBlazer/waybill/api/internal/db"
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
@@ -119,6 +121,9 @@ var (
 	devApproverID   = uuid.MustParse("00000000-0000-4000-8000-00000000e102")
 )
 
+// devContractorWallet is Anvil's second default account.
+const devContractorWallet = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
+
 // devOrgThreshold is 500 USDC: runs above it need a second person.
 var devOrgThreshold = money.FromInt64(500_000_000)
 
@@ -155,6 +160,15 @@ func runSeedDev(ctx context.Context, log *slog.Logger) error {
 			return err
 		}
 		if err := q.InsertAPIKey(ctx, store.InsertAPIKeyParams{ContractorID: devContractorID, Prefix: key.Prefix, SecretSha256: key.Hash[:]}); err != nil {
+			return err
+		}
+		// A payout wallet already past its 24-hour wait, so batch runs can
+		// pay the demo contractor at once. Anvil's second dev account: its
+		// key is public, which is fine for a local test chain only.
+		if _, err := q.UpsertContractorWallet(ctx, store.UpsertContractorWalletParams{
+			ContractorID: devContractorID, Network: string(safety.EVMAnvil), Address: devContractorWallet,
+			Now: now.Add(-25 * time.Hour), PayoutsAllowedFrom: now.Add(-time.Hour),
+		}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		return seedDevOrg(ctx, q, cfg.DevAdminKey, cfg.DevApproverKey)
@@ -199,4 +213,19 @@ func seedDevOrg(ctx context.Context, q *store.Queries, adminKey, approverKey str
 		}
 	}
 	return nil
+}
+
+// batchService builds the batch-run service, reading each network's vault
+// limits from its own chain.
+func batchService(pool *pgxpool.Pool, chains map[safety.Network]evmChain, log *slog.Logger) *batch.Service {
+	svc := &batch.Service{
+		Pool: pool, Log: log,
+		Deployments: map[safety.Network]deployments.Deployment{},
+		Limits:      map[safety.Network]batch.VaultLimits{},
+	}
+	for n, c := range chains {
+		svc.Deployments[n] = c.deployment
+		svc.Limits[n] = batch.ChainVault{Client: c.client, Vault: c.deployment.Vault, Token: c.deployment.Token}
+	}
+	return svc
 }

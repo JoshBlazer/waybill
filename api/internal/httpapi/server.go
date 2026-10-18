@@ -12,6 +12,7 @@ import (
 
 	"github.com/JoshBlazer/waybill/api/internal/auth"
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
+	"github.com/JoshBlazer/waybill/api/internal/batch"
 	"github.com/JoshBlazer/waybill/api/internal/checkout"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/org"
@@ -44,6 +45,7 @@ type Server struct {
 	Paystack *paystack.Client      // webhook signatures; nil when no key is configured
 	Checkout *checkout.Service     // card and bank pay-in; nil disables it
 	Org      *org.Service          // payer organisations (stage 4)
+	Batches  *batch.Service        // contractor wallets and batch runs (stage 4)
 	Now      func() time.Time      // nil means time.Now
 }
 
@@ -100,6 +102,8 @@ var authenticatedOperations = map[string]bool{
 	"SetBankAccount":        true,
 	"GetInvoice":            true,
 	"AcceptShortfall":       true,
+	"ListPayoutWallets":     true,
+	"SetPayoutWallet":       true,
 }
 
 // memberOperations lists the operations that need an organisation
@@ -112,6 +116,13 @@ var memberOperations = map[string]bool{
 	"AddMember":    true,
 	"UpdateMember": true,
 	"GetFunding":   true,
+	"CreateBatch":  true,
+	"ListBatches":  true,
+	"GetBatch":     true,
+	"ApproveBatch": true,
+	"RejectBatch":  true,
+	"SendBatch":    true,
+	"CancelBatch":  true,
 }
 
 // IsAuthenticated reports whether an operation requires a key.
