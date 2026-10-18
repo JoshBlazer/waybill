@@ -453,6 +453,162 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/me/payout-wallet": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The contractor's payout wallets, one per network. */
+    get: operations["listPayoutWallets"];
+    /**
+     * Set or change the wallet that batch runs pay on a network.
+     * @description Saving the same address again changes nothing. A new or changed
+     *     address can be paid only after 24 hours (`payoutsAllowedFrom`), so a
+     *     stolen API key cannot redirect a run at once.
+     */
+    put: operations["setPayoutWallet"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The organisation's 50 newest runs, without their lines. */
+    get: operations["listBatches"];
+    put?: never;
+    /**
+     * Build a run and check every line. Makers only.
+     * @description Each line is checked: the contractor is verified, has a payout
+     *     wallet on the network that is past its 24-hour wait, the amount is
+     *     within the vault's limit per payment, and the same contractor and
+     *     reference were not paid by the organisation in the last 30 days.
+     *     The total must be within the organisation's available balance.
+     *
+     *     A run whose lines all pass is `ready`, or `awaiting_approval` when
+     *     its total is above the threshold. Otherwise it stays `draft`, each
+     *     problem stated on its line (or in `problem` for the run), and can
+     *     only be cancelled; build a corrected run.
+     */
+    post: operations["createBatch"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One run with its lines and approvals. */
+    get: operations["getBatch"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve a run above the threshold. Approvers only.
+     * @description Nobody approves their own run (403), whatever roles they hold; the
+     *     database refuses it too. The run can then be sent.
+     */
+    post: operations["approveBatch"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Refuse a run above the threshold. Approvers only.
+     * @description A rejected run can never be sent.
+     */
+    post: operations["rejectBatch"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/send": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send a run. Makers only.
+     * @description Sends an approved run, or a ready run at or below the threshold.
+     *     The total is reserved from the organisation's balance and the run
+     *     is recorded as `sending` before the transaction goes out; the run
+     *     is then paid in one `BatchPayout` transaction. 409 if the run is
+     *     not sendable, 422 if the balance or the vault's daily limit is
+     *     short or a wallet changed since the run was checked.
+     */
+    post: operations["sendBatch"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Withdraw a run that has not been sent. Makers and admins.
+     * @description A run cannot be cancelled once it is sending.
+     */
+    post: operations["cancelBatch"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -628,6 +784,99 @@ export interface components {
       depositAddresses: components["schemas"]["DepositAddress"][];
       pending: components["schemas"]["Amount"];
       available: components["schemas"]["Amount"];
+    };
+    PayoutWallet: {
+      /** @example evm:84532 */
+      network: string;
+      address: string;
+      /** Format: date-time */
+      addedAt: string;
+      /** Format: date-time */
+      payoutsAllowedFrom: string;
+    };
+    PayoutWalletList: {
+      data: components["schemas"]["PayoutWallet"][];
+    };
+    SetPayoutWalletRequest: {
+      /** @example evm:84532 */
+      network: string;
+      address: string;
+    };
+    /** @enum {string} */
+    BatchState:
+      | "draft"
+      | "ready"
+      | "awaiting_approval"
+      | "approved"
+      | "sending"
+      | "confirming"
+      | "paid"
+      | "failed"
+      | "rejected"
+      | "cancelled";
+    CreateBatchRequest: {
+      /**
+       * @description Defaults to the only network with a BatchPayout contract.
+       * @example evm:84532
+       */
+      network?: string;
+      lines: components["schemas"]["CreateBatchLine"][];
+    };
+    CreateBatchLine: {
+      /** Format: uuid */
+      contractorId: string;
+      /**
+       * @description USDC, as a decimal string.
+       * @example 250
+       */
+      amount: string;
+      /** @example September retainer */
+      reference: string;
+    };
+    BatchLine: {
+      lineNo: number;
+      /** Format: uuid */
+      contractorId: string;
+      /** @description The contractor's legal name, so the approver sees who is paid. */
+      contractorName: string;
+      verified: boolean;
+      walletAddress?: string | null;
+      amount: components["schemas"]["Amount"];
+      reference: string;
+      /** @description Why this line cannot be paid. Absent when it can. */
+      problem?: string | null;
+      trackingCode: string;
+    };
+    Approval: {
+      /** Format: uuid */
+      approverId: string;
+      /** @enum {string} */
+      decision: "approved" | "rejected";
+      /** Format: date-time */
+      decidedAt: string;
+    };
+    Batch: {
+      /** Format: uuid */
+      id: string;
+      state: components["schemas"]["BatchState"];
+      network: string;
+      total: components["schemas"]["Amount"];
+      /** Format: uuid */
+      createdBy: string;
+      /** @description The total is above the organisation's threshold. */
+      needsApproval: boolean;
+      /** @description Why the run cannot be sent, or why it failed. */
+      problem?: string | null;
+      txHash?: string | null;
+      lines?: components["schemas"]["BatchLine"][];
+      approvals?: components["schemas"]["Approval"][];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    BatchList: {
+      data: components["schemas"]["Batch"][];
     };
     TrackingStep: {
       /** @enum {string} */
@@ -1541,6 +1790,235 @@ export interface operations {
         };
       };
       401: components["responses"]["Problem"];
+    };
+  };
+  listPayoutWallets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The wallets. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PayoutWalletList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  setPayoutWallet: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPayoutWalletRequest"];
+      };
+    };
+    responses: {
+      /** @description Saved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PayoutWallet"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  listBatches: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The runs. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BatchList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  createBatch: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Unique per logical request, 1–255 printable ASCII characters. */
+        "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateBatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Built and checked. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  getBatch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The run. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  approveBatch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The run after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  rejectBatch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The run after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  sendBatch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The run after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
+    };
+  };
+  cancelBatch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The run after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Batch"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
     };
   };
 }

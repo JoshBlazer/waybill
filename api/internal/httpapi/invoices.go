@@ -15,6 +15,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/auth"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/JoshBlazer/waybill/api/internal/statemachine"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 )
 
@@ -152,12 +153,52 @@ func (s *Server) payableInNaira(inv invoice.Invoice) *PaymentLinkNaira {
 func (s *Server) GetTracking(ctx context.Context, req GetTrackingRequestObject) (GetTrackingResponseObject, error) {
 	inv, err := invoice.Load(ctx, s.Pool, s.Tokens, req.Code)
 	if errors.Is(err, invoice.ErrNotFound) {
-		return GetTracking404ApplicationProblemPlusJSONResponse{ProblemApplicationProblemPlusJSONResponse(notFound())}, nil
+		// Not an invoice: perhaps a line of a batch run.
+		l, lerr := store.New(s.Pool).GetBatchLineByTrackingCode(ctx, req.Code)
+		if errors.Is(lerr, pgx.ErrNoRows) {
+			return GetTracking404ApplicationProblemPlusJSONResponse{ProblemApplicationProblemPlusJSONResponse(notFound())}, nil
+		}
+		if lerr != nil {
+			return nil, lerr
+		}
+		return GetTracking200JSONResponse(lineTrackingJSON(l)), nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	return GetTracking200JSONResponse(trackingJSON(inv)), nil
+}
+
+// lineTrackingJSON is a batch line in the tracking view: the payment is
+// received when its transaction is mined and confirmed when final. The
+// contractor keeps the stablecoin, so converted and sent to bank are
+// skipped (docs/design/teams.md §7).
+func lineTrackingJSON(l store.GetBatchLineByTrackingCodeRow) Tracking {
+	st := statemachine.BatchState(l.BatchState)
+	state := InvoiceStateOpen
+	received, confirmed := Waiting, Waiting
+	var at *time.Time
+	switch st {
+	case statemachine.BatchSending:
+		received = Current
+	case statemachine.BatchConfirming:
+		state, received, confirmed = InvoiceStateConfirmed, Done, Current
+	case statemachine.BatchPaid:
+		u := l.BatchUpdatedAt.UTC()
+		state, received, confirmed, at = InvoiceStateSettled, Done, Done, &u
+	case statemachine.BatchFailed, statemachine.BatchRejected, statemachine.BatchCancelled:
+		state = InvoiceStateCancelled
+	}
+	return Tracking{
+		TrackingCode: l.TrackingCode, ContractorName: l.ContractorName, Amount: usdcAmount(l.Amount),
+		InvoiceState: state, UpdatedAt: l.BatchUpdatedAt.UTC(),
+		Steps: []TrackingStep{
+			{Step: TrackingStepStepReceived, Status: received},
+			{Step: TrackingStepStepConfirmed, Status: confirmed, At: at},
+			{Step: TrackingStepStepConverted, Status: Skipped},
+			{Step: TrackingStepStepSentToBank, Status: Skipped},
+		},
+	}
 }
 
 // notFound deliberately says nothing about whether a similar code exists.

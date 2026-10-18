@@ -19,6 +19,66 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ApprovalDecision.
+const (
+	ApprovalDecisionApproved ApprovalDecision = "approved"
+	ApprovalDecisionRejected ApprovalDecision = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecision enum.
+func (e ApprovalDecision) Valid() bool {
+	switch e {
+	case ApprovalDecisionApproved:
+		return true
+	case ApprovalDecisionRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BatchState.
+const (
+	BatchStateApproved         BatchState = "approved"
+	BatchStateAwaitingApproval BatchState = "awaiting_approval"
+	BatchStateCancelled        BatchState = "cancelled"
+	BatchStateConfirming       BatchState = "confirming"
+	BatchStateDraft            BatchState = "draft"
+	BatchStateFailed           BatchState = "failed"
+	BatchStatePaid             BatchState = "paid"
+	BatchStateReady            BatchState = "ready"
+	BatchStateRejected         BatchState = "rejected"
+	BatchStateSending          BatchState = "sending"
+)
+
+// Valid indicates whether the value is a known member of the BatchState enum.
+func (e BatchState) Valid() bool {
+	switch e {
+	case BatchStateApproved:
+		return true
+	case BatchStateAwaitingApproval:
+		return true
+	case BatchStateCancelled:
+		return true
+	case BatchStateConfirming:
+		return true
+	case BatchStateDraft:
+		return true
+	case BatchStateFailed:
+		return true
+	case BatchStatePaid:
+		return true
+	case BatchStateReady:
+		return true
+	case BatchStateRejected:
+		return true
+	case BatchStateSending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateInvoiceRequestAsset.
 const (
 	USDC CreateInvoiceRequestAsset = "USDC"
@@ -356,6 +416,16 @@ type ApiKeyList struct {
 	Items []ApiKey `json:"items"`
 }
 
+// Approval defines model for Approval.
+type Approval struct {
+	ApproverId openapi_types.UUID `json:"approverId"`
+	DecidedAt  time.Time          `json:"decidedAt"`
+	Decision   ApprovalDecision   `json:"decision"`
+}
+
+// ApprovalDecision defines model for Approval.Decision.
+type ApprovalDecision string
+
 // Bank defines model for Bank.
 type Bank struct {
 	// Code Example: 058
@@ -385,6 +455,54 @@ type BankList struct {
 	Items []Bank `json:"items"`
 }
 
+// Batch defines model for Batch.
+type Batch struct {
+	Approvals *[]Approval        `json:"approvals,omitempty"`
+	CreatedAt time.Time          `json:"createdAt"`
+	CreatedBy openapi_types.UUID `json:"createdBy"`
+	Id        openapi_types.UUID `json:"id"`
+	Lines     *[]BatchLine       `json:"lines,omitempty"`
+
+	// NeedsApproval The total is above the organisation's threshold.
+	NeedsApproval bool   `json:"needsApproval"`
+	Network       string `json:"network"`
+
+	// Problem Why the run cannot be sent, or why it failed.
+	Problem *string    `json:"problem,omitempty"`
+	State   BatchState `json:"state"`
+
+	// Total An exact amount. `minor` / 10^`scale` is the value in major units.
+	Total     Amount    `json:"total"`
+	TxHash    *string   `json:"txHash,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// BatchLine defines model for BatchLine.
+type BatchLine struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount       Amount             `json:"amount"`
+	ContractorId openapi_types.UUID `json:"contractorId"`
+
+	// ContractorName The contractor's legal name, so the approver sees who is paid.
+	ContractorName string `json:"contractorName"`
+	LineNo         int    `json:"lineNo"`
+
+	// Problem Why this line cannot be paid. Absent when it can.
+	Problem       *string `json:"problem,omitempty"`
+	Reference     string  `json:"reference"`
+	TrackingCode  string  `json:"trackingCode"`
+	Verified      bool    `json:"verified"`
+	WalletAddress *string `json:"walletAddress,omitempty"`
+}
+
+// BatchList defines model for BatchList.
+type BatchList struct {
+	Data []Batch `json:"data"`
+}
+
+// BatchState defines model for BatchState.
+type BatchState string
+
 // Checkout defines model for Checkout.
 type Checkout struct {
 	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
@@ -402,6 +520,28 @@ type CreateApiKeyRequest struct {
 	//
 	// Example: Accounting export
 	Name string `json:"name"`
+}
+
+// CreateBatchLine defines model for CreateBatchLine.
+type CreateBatchLine struct {
+	// Amount USDC, as a decimal string.
+	//
+	// Example: 250
+	Amount       string             `json:"amount"`
+	ContractorId openapi_types.UUID `json:"contractorId"`
+
+	// Reference Example: September retainer
+	Reference string `json:"reference"`
+}
+
+// CreateBatchRequest defines model for CreateBatchRequest.
+type CreateBatchRequest struct {
+	Lines []CreateBatchLine `json:"lines"`
+
+	// Network Defaults to the only network with a BatchPayout contract.
+	//
+	// Example: evm:84532
+	Network *string `json:"network,omitempty"`
 }
 
 // CreateInvoiceRequest defines model for CreateInvoiceRequest.
@@ -633,6 +773,21 @@ type Payout struct {
 // with it by reference; it is never shown as failed.
 type PayoutState string
 
+// PayoutWallet defines model for PayoutWallet.
+type PayoutWallet struct {
+	AddedAt time.Time `json:"addedAt"`
+	Address string    `json:"address"`
+
+	// Network Example: evm:84532
+	Network            string    `json:"network"`
+	PayoutsAllowedFrom time.Time `json:"payoutsAllowedFrom"`
+}
+
+// PayoutWalletList defines model for PayoutWalletList.
+type PayoutWalletList struct {
+	Data []PayoutWallet `json:"data"`
+}
+
 // Problem defines model for Problem.
 type Problem struct {
 	Detail   *string `json:"detail,omitempty"`
@@ -671,6 +826,14 @@ type SetBankAccountRequest struct {
 	// AccountNumber A 10-digit NUBAN.
 	AccountNumber string `json:"accountNumber"`
 	BankCode      string `json:"bankCode"`
+}
+
+// SetPayoutWalletRequest defines model for SetPayoutWalletRequest.
+type SetPayoutWalletRequest struct {
+	Address string `json:"address"`
+
+	// Network Example: evm:84532
+	Network string `json:"network"`
 }
 
 // Tracking defines model for Tracking.
@@ -796,6 +959,12 @@ type CreateApiKeyParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// CreateBatchParams defines parameters for CreateBatch.
+type CreateBatchParams struct {
+	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // CreateInvoiceParams defines parameters for CreateInvoice.
 type CreateInvoiceParams struct {
 	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
@@ -837,11 +1006,17 @@ type ListWebhookDeliveriesParams struct {
 // CreateApiKeyJSONRequestBody defines body for CreateApiKey for application/json ContentType.
 type CreateApiKeyJSONRequestBody = CreateApiKeyRequest
 
+// CreateBatchJSONRequestBody defines body for CreateBatch for application/json ContentType.
+type CreateBatchJSONRequestBody = CreateBatchRequest
+
 // CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
 type CreateInvoiceJSONRequestBody = CreateInvoiceRequest
 
 // SetBankAccountJSONRequestBody defines body for SetBankAccount for application/json ContentType.
 type SetBankAccountJSONRequestBody = SetBankAccountRequest
+
+// SetPayoutWalletJSONRequestBody defines body for SetPayoutWallet for application/json ContentType.
+type SetPayoutWalletJSONRequestBody = SetPayoutWalletRequest
 
 // UpdateOrgJSONRequestBody defines body for UpdateOrg for application/json ContentType.
 type UpdateOrgJSONRequestBody = UpdateOrgRequest
@@ -872,6 +1047,27 @@ type ServerInterface interface {
 	// ListBanks Nigerian banks that can receive payouts.
 	// (GET /v1/banks)
 	ListBanks(w http.ResponseWriter, r *http.Request)
+	// ListBatches The organisation's 50 newest runs, without their lines.
+	// (GET /v1/batches)
+	ListBatches(w http.ResponseWriter, r *http.Request)
+	// CreateBatch Build a run and check every line. Makers only.
+	// (POST /v1/batches)
+	CreateBatch(w http.ResponseWriter, r *http.Request, params CreateBatchParams)
+	// GetBatch One run with its lines and approvals.
+	// (GET /v1/batches/{id})
+	GetBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// ApproveBatch Approve a run above the threshold. Approvers only.
+	// (POST /v1/batches/{id}/approve)
+	ApproveBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// CancelBatch Withdraw a run that has not been sent. Makers and admins.
+	// (POST /v1/batches/{id}/cancel)
+	CancelBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// RejectBatch Refuse a run above the threshold. Approvers only.
+	// (POST /v1/batches/{id}/reject)
+	RejectBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// SendBatch Send a run. Makers only.
+	// (POST /v1/batches/{id}/send)
+	SendBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -890,6 +1086,12 @@ type ServerInterface interface {
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(w http.ResponseWriter, r *http.Request)
+	// ListPayoutWallets The contractor's payout wallets, one per network.
+	// (GET /v1/me/payout-wallet)
+	ListPayoutWallets(w http.ResponseWriter, r *http.Request)
+	// SetPayoutWallet Set or change the wallet that batch runs pay on a network.
+	// (PUT /v1/me/payout-wallet)
+	SetPayoutWallet(w http.ResponseWriter, r *http.Request)
 	// GetOrg The caller's organisation.
 	// (GET /v1/org)
 	GetOrg(w http.ResponseWriter, r *http.Request)
@@ -1036,6 +1238,195 @@ func (siw *ServerInterfaceWrapper) ListBanks(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListBanks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBatches operation middleware
+func (siw *ServerInterfaceWrapper) ListBatches(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBatches(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBatch operation middleware
+func (siw *ServerInterfaceWrapper) CreateBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateBatchParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBatch(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBatch operation middleware
+func (siw *ServerInterfaceWrapper) GetBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveBatch operation middleware
+func (siw *ServerInterfaceWrapper) ApproveBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveBatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelBatch operation middleware
+func (siw *ServerInterfaceWrapper) CancelBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelBatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectBatch operation middleware
+func (siw *ServerInterfaceWrapper) RejectBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectBatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendBatch operation middleware
+func (siw *ServerInterfaceWrapper) SendBatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendBatch(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1203,6 +1594,34 @@ func (siw *ServerInterfaceWrapper) SetBankAccount(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPayoutWallets operation middleware
+func (siw *ServerInterfaceWrapper) ListPayoutWallets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPayoutWallets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPayoutWallet operation middleware
+func (siw *ServerInterfaceWrapper) SetPayoutWallet(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPayoutWallet(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1766,6 +2185,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/org/members", wrapper.AddMember)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/org/members/{id}", wrapper.UpdateMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/org/funding", wrapper.GetFunding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/me/payout-wallet", wrapper.ListPayoutWallets)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/me/payout-wallet", wrapper.SetPayoutWallet)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches", wrapper.ListBatches)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches", wrapper.CreateBatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches/{id}", wrapper.GetBatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/approve", wrapper.ApproveBatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/reject", wrapper.RejectBatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/send", wrapper.SendBatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/cancel", wrapper.CancelBatch)
 
 	return m
 }
@@ -1997,6 +2425,510 @@ func (response ListBanks503ApplicationProblemPlusJSONResponse) VisitListBanksRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBatchesRequestObject struct {
+}
+
+type ListBatchesResponseObject interface {
+	VisitListBatchesResponse(w http.ResponseWriter) error
+}
+
+type ListBatches200JSONResponse BatchList
+
+func (response ListBatches200JSONResponse) VisitListBatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBatches401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListBatches401ApplicationProblemPlusJSONResponse) VisitListBatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBatchRequestObject struct {
+	Params CreateBatchParams
+	Body   *CreateBatchJSONRequestBody
+}
+
+type CreateBatchResponseObject interface {
+	VisitCreateBatchResponse(w http.ResponseWriter) error
+}
+
+type CreateBatch201JSONResponse Batch
+
+func (response CreateBatch201JSONResponse) VisitCreateBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBatch400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateBatch400ApplicationProblemPlusJSONResponse) VisitCreateBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBatch401ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateBatch401ApplicationProblemPlusJSONResponse) VisitCreateBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBatch403ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateBatch403ApplicationProblemPlusJSONResponse) VisitCreateBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBatch422ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateBatch422ApplicationProblemPlusJSONResponse) VisitCreateBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetBatchResponseObject interface {
+	VisitGetBatchResponse(w http.ResponseWriter) error
+}
+
+type GetBatch200JSONResponse Batch
+
+func (response GetBatch200JSONResponse) VisitGetBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatch401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetBatch401ApplicationProblemPlusJSONResponse) VisitGetBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatch404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBatch404ApplicationProblemPlusJSONResponse) VisitGetBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBatchRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type ApproveBatchResponseObject interface {
+	VisitApproveBatchResponse(w http.ResponseWriter) error
+}
+
+type ApproveBatch200JSONResponse Batch
+
+func (response ApproveBatch200JSONResponse) VisitApproveBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBatch401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveBatch401ApplicationProblemPlusJSONResponse) VisitApproveBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBatch403ApplicationProblemPlusJSONResponse Problem
+
+func (response ApproveBatch403ApplicationProblemPlusJSONResponse) VisitApproveBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBatch404ApplicationProblemPlusJSONResponse Problem
+
+func (response ApproveBatch404ApplicationProblemPlusJSONResponse) VisitApproveBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBatch409ApplicationProblemPlusJSONResponse Problem
+
+func (response ApproveBatch409ApplicationProblemPlusJSONResponse) VisitApproveBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBatchRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type CancelBatchResponseObject interface {
+	VisitCancelBatchResponse(w http.ResponseWriter) error
+}
+
+type CancelBatch200JSONResponse Batch
+
+func (response CancelBatch200JSONResponse) VisitCancelBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBatch401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CancelBatch401ApplicationProblemPlusJSONResponse) VisitCancelBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBatch403ApplicationProblemPlusJSONResponse Problem
+
+func (response CancelBatch403ApplicationProblemPlusJSONResponse) VisitCancelBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBatch404ApplicationProblemPlusJSONResponse Problem
+
+func (response CancelBatch404ApplicationProblemPlusJSONResponse) VisitCancelBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelBatch409ApplicationProblemPlusJSONResponse Problem
+
+func (response CancelBatch409ApplicationProblemPlusJSONResponse) VisitCancelBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectBatchRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type RejectBatchResponseObject interface {
+	VisitRejectBatchResponse(w http.ResponseWriter) error
+}
+
+type RejectBatch200JSONResponse Batch
+
+func (response RejectBatch200JSONResponse) VisitRejectBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectBatch401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RejectBatch401ApplicationProblemPlusJSONResponse) VisitRejectBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectBatch403ApplicationProblemPlusJSONResponse Problem
+
+func (response RejectBatch403ApplicationProblemPlusJSONResponse) VisitRejectBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectBatch404ApplicationProblemPlusJSONResponse Problem
+
+func (response RejectBatch404ApplicationProblemPlusJSONResponse) VisitRejectBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectBatch409ApplicationProblemPlusJSONResponse Problem
+
+func (response RejectBatch409ApplicationProblemPlusJSONResponse) VisitRejectBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatchRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type SendBatchResponseObject interface {
+	VisitSendBatchResponse(w http.ResponseWriter) error
+}
+
+type SendBatch200JSONResponse Batch
+
+func (response SendBatch200JSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatch401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SendBatch401ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatch403ApplicationProblemPlusJSONResponse Problem
+
+func (response SendBatch403ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatch404ApplicationProblemPlusJSONResponse Problem
+
+func (response SendBatch404ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatch409ApplicationProblemPlusJSONResponse Problem
+
+func (response SendBatch409ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBatch422ApplicationProblemPlusJSONResponse Problem
+
+func (response SendBatch422ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2377,6 +3309,109 @@ func (response SetBankAccount503ApplicationProblemPlusJSONResponse) VisitSetBank
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPayoutWalletsRequestObject struct {
+}
+
+type ListPayoutWalletsResponseObject interface {
+	VisitListPayoutWalletsResponse(w http.ResponseWriter) error
+}
+
+type ListPayoutWallets200JSONResponse PayoutWalletList
+
+func (response ListPayoutWallets200JSONResponse) VisitListPayoutWalletsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPayoutWallets401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListPayoutWallets401ApplicationProblemPlusJSONResponse) VisitListPayoutWalletsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPayoutWalletRequestObject struct {
+	Body *SetPayoutWalletJSONRequestBody
+}
+
+type SetPayoutWalletResponseObject interface {
+	VisitSetPayoutWalletResponse(w http.ResponseWriter) error
+}
+
+type SetPayoutWallet200JSONResponse PayoutWallet
+
+func (response SetPayoutWallet200JSONResponse) VisitSetPayoutWalletResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPayoutWallet400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetPayoutWallet400ApplicationProblemPlusJSONResponse) VisitSetPayoutWalletResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPayoutWallet401ApplicationProblemPlusJSONResponse Problem
+
+func (response SetPayoutWallet401ApplicationProblemPlusJSONResponse) VisitSetPayoutWalletResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPayoutWallet422ApplicationProblemPlusJSONResponse Problem
+
+func (response SetPayoutWallet422ApplicationProblemPlusJSONResponse) VisitSetPayoutWalletResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3193,6 +4228,27 @@ type StrictServerInterface interface {
 	// ListBanks Nigerian banks that can receive payouts.
 	// (GET /v1/banks)
 	ListBanks(ctx context.Context, request ListBanksRequestObject) (ListBanksResponseObject, error)
+	// ListBatches The organisation's 50 newest runs, without their lines.
+	// (GET /v1/batches)
+	ListBatches(ctx context.Context, request ListBatchesRequestObject) (ListBatchesResponseObject, error)
+	// CreateBatch Build a run and check every line. Makers only.
+	// (POST /v1/batches)
+	CreateBatch(ctx context.Context, request CreateBatchRequestObject) (CreateBatchResponseObject, error)
+	// GetBatch One run with its lines and approvals.
+	// (GET /v1/batches/{id})
+	GetBatch(ctx context.Context, request GetBatchRequestObject) (GetBatchResponseObject, error)
+	// ApproveBatch Approve a run above the threshold. Approvers only.
+	// (POST /v1/batches/{id}/approve)
+	ApproveBatch(ctx context.Context, request ApproveBatchRequestObject) (ApproveBatchResponseObject, error)
+	// CancelBatch Withdraw a run that has not been sent. Makers and admins.
+	// (POST /v1/batches/{id}/cancel)
+	CancelBatch(ctx context.Context, request CancelBatchRequestObject) (CancelBatchResponseObject, error)
+	// RejectBatch Refuse a run above the threshold. Approvers only.
+	// (POST /v1/batches/{id}/reject)
+	RejectBatch(ctx context.Context, request RejectBatchRequestObject) (RejectBatchResponseObject, error)
+	// SendBatch Send a run. Makers only.
+	// (POST /v1/batches/{id}/send)
+	SendBatch(ctx context.Context, request SendBatchRequestObject) (SendBatchResponseObject, error)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -3211,6 +4267,12 @@ type StrictServerInterface interface {
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(ctx context.Context, request SetBankAccountRequestObject) (SetBankAccountResponseObject, error)
+	// ListPayoutWallets The contractor's payout wallets, one per network.
+	// (GET /v1/me/payout-wallet)
+	ListPayoutWallets(ctx context.Context, request ListPayoutWalletsRequestObject) (ListPayoutWalletsResponseObject, error)
+	// SetPayoutWallet Set or change the wallet that batch runs pay on a network.
+	// (PUT /v1/me/payout-wallet)
+	SetPayoutWallet(ctx context.Context, request SetPayoutWalletRequestObject) (SetPayoutWalletResponseObject, error)
 	// GetOrg The caller's organisation.
 	// (GET /v1/org)
 	GetOrg(ctx context.Context, request GetOrgRequestObject) (GetOrgResponseObject, error)
@@ -3404,6 +4466,193 @@ func (sh *strictHandler) ListBanks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListBatches operation middleware
+func (sh *strictHandler) ListBatches(w http.ResponseWriter, r *http.Request) {
+	var request ListBatchesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBatches(ctx, request.(ListBatchesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBatches")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBatchesResponseObject); ok {
+		if err := validResponse.VisitListBatchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBatch operation middleware
+func (sh *strictHandler) CreateBatch(w http.ResponseWriter, r *http.Request, params CreateBatchParams) {
+	var request CreateBatchRequestObject
+
+	request.Params = params
+
+	var body CreateBatchJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBatch(ctx, request.(CreateBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBatchResponseObject); ok {
+		if err := validResponse.VisitCreateBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBatch operation middleware
+func (sh *strictHandler) GetBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetBatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBatch(ctx, request.(GetBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBatchResponseObject); ok {
+		if err := validResponse.VisitGetBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveBatch operation middleware
+func (sh *strictHandler) ApproveBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request ApproveBatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveBatch(ctx, request.(ApproveBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveBatchResponseObject); ok {
+		if err := validResponse.VisitApproveBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelBatch operation middleware
+func (sh *strictHandler) CancelBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request CancelBatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelBatch(ctx, request.(CancelBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelBatchResponseObject); ok {
+		if err := validResponse.VisitCancelBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RejectBatch operation middleware
+func (sh *strictHandler) RejectBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request RejectBatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RejectBatch(ctx, request.(RejectBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RejectBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RejectBatchResponseObject); ok {
+		if err := validResponse.VisitRejectBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendBatch operation middleware
+func (sh *strictHandler) SendBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request SendBatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendBatch(ctx, request.(SendBatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendBatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendBatchResponseObject); ok {
+		if err := validResponse.VisitSendBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -3562,6 +4811,61 @@ func (sh *strictHandler) SetBankAccount(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetBankAccountResponseObject); ok {
 		if err := validResponse.VisitSetBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPayoutWallets operation middleware
+func (sh *strictHandler) ListPayoutWallets(w http.ResponseWriter, r *http.Request) {
+	var request ListPayoutWalletsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPayoutWallets(ctx, request.(ListPayoutWalletsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPayoutWallets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPayoutWalletsResponseObject); ok {
+		if err := validResponse.VisitListPayoutWalletsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPayoutWallet operation middleware
+func (sh *strictHandler) SetPayoutWallet(w http.ResponseWriter, r *http.Request) {
+	var request SetPayoutWalletRequestObject
+
+	var body SetPayoutWalletJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPayoutWallet(ctx, request.(SetPayoutWalletRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPayoutWallet")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPayoutWalletResponseObject); ok {
+		if err := validResponse.VisitSetPayoutWalletResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

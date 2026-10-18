@@ -72,7 +72,7 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 ## Stage 4 — Teams
 
 - [x] Payer organisations, members and roles ([design/teams.md](design/teams.md), ADR-043), with funding addresses.
-- [ ] Batch pay: build, check, approve (approver ≠ creator), send through `BatchPayout`.
+- [x] Batch pay: build, check, approve (approver ≠ creator), send through `BatchPayout`.
 - [ ] Invoices, receipts and accountant export (CSV and PDF).
 - [ ] Contractor balance and conversion at a quoted rate.
 - [ ] Reconciliation job: ledger against chain and provider, with a report.

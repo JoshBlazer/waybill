@@ -123,6 +123,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Paystack: nr.paystack,
 			Checkout: nr.checkout(pool, tokens, cfg.WebURL, log),
 			Org:      &org.Service{Pool: pool, Deployments: deps},
+			Batches:  batchService(pool, chains, log),
 			Tokens:   tokens,
 			WebURL:   cfg.WebURL,
 
