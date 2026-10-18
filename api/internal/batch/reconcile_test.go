@@ -113,7 +113,7 @@ func TestExitCheck_ReconciliationAfterDualApprovalRunIsClean(t *testing.T) {
 
 // Money in flight is listed, not reported: a run paid on chain but not yet
 // final. A deposit seen but not yet final needs no entry: the ledger books
-// deposit custody at first sighting.
+// deposit custody at confirmation, which the extra block reaches.
 func TestReconcile_MoneyInFlightIsExplained(t *testing.T) {
 	r := setup(t)
 	ctx := context.Background()
@@ -228,5 +228,31 @@ func TestReconcile_PaymentAmountMismatchIsADifference(t *testing.T) {
 	c := check(t, rep, "R4:"+string(anvil))
 	if c.Status != reconcile.Difference || len(c.Problems) != 1 || !strings.Contains(c.Problems[0], "the chain moved 100000000") {
 		t.Fatalf("record check %s, problems %v; want one amount mismatch", c.Status, c.Problems)
+	}
+}
+
+// A deposit only detected (mined, not yet confirmed) is on chain but not in
+// the ledger: it is listed as in flight, not reported as unexplained.
+func TestReconcile_DetectedDepositIsInFlight(t *testing.T) {
+	r := setup(t)
+	ctx := context.Background()
+	r.fundAndSweep(t, 100)
+	f, _ := r.orgs.Funding(ctx, r.orgID)
+	r.a.Mint(r.d.Token, common.HexToAddress(f.Addresses[0].Address), 3_000_000) // mined in its own block
+	if err := r.w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var detected int
+	_ = r.pool.QueryRow(ctx, `SELECT count(*) FROM payments WHERE state = 'detected'`).Scan(&detected)
+	if detected != 1 {
+		t.Fatalf("%d detected payments; the test needs one seen but not confirmed", detected)
+	}
+	rep, err := r.reconciler().Run(ctx, reconcile.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := check(t, rep, "R3:"+string(anvil))
+	if c.Status != reconcile.OK || len(c.InFlight) != 1 || c.Explained != "3000000" || c.Chain != "3000000" || c.Ledger != "0" {
+		t.Fatalf("deposit check %+v; want 3 USDC on chain, 0 booked, 3 in flight", c)
 	}
 }

@@ -405,9 +405,18 @@ func (r *Reconciler) checkCustody(ctx context.Context, n safety.Network, nw Netw
 		}
 	}
 
-	// Deposits are booked at first sighting. One seen in a block above the
-	// height read here is in the ledger but not yet in the balance read.
-	above, err := q.ListPaymentsAbove(ctx, store.ListPaymentsAboveParams{Network: string(n), Height: int64(height)}) //nolint:gosec // block height
+	// Deposits are booked at confirmation. One only detected at or below
+	// the height read is on chain but not yet in the ledger; one booked
+	// from a block above it is in the ledger but not in the balance read.
+	h := int64(height) //nolint:gosec // block height
+	seen, err := q.ListDetectedPaymentsUpTo(ctx, store.ListDetectedPaymentsUpToParams{Network: string(n), Height: h})
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, p := range seen {
+		deposit.InFlight = append(deposit.InFlight, inFlight("deposit seen, not yet confirmed", "payment "+p.ID.String(), p.Amount))
+	}
+	above, err := q.ListBookedPaymentsAbove(ctx, store.ListBookedPaymentsAboveParams{Network: string(n), Height: h})
 	if err != nil {
 		return nil, 0, err
 	}

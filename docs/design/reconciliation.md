@@ -21,7 +21,7 @@ A **difference** is anything the job cannot explain. The exit check needs a repo
 
 ### Balance checks and money in flight
 
-The chain and the ledger never agree at every instant: a deposit is booked when it is first seen, a sweep a few confirmations after it is mined, and a run only at finality. So R2 and R3 read both balances at **one block height**, the head when the check starts, and compute:
+The chain and the ledger never agree at every instant: a deposit is booked when it is confirmed, a sweep a few confirmations after it is mined, and a run only at finality. So R2 and R3 read both balances at **one block height**, the head when the check starts, and compute:
 
     expected = ledger balance + money in flight
 
@@ -29,7 +29,8 @@ The chain and the ledger never agree at every instant: a deposit is booked when 
 
 - sweeps mined but not yet booked (their receipt is read from every hash the transaction manager broadcast);
 - runs paid on chain but not yet final;
-- deposits booked from a block above the height read.
+- deposits seen at or below the height read but not yet confirmed (on chain, not yet booked);
+- deposits booked from a block above the height read (booked, not in the balance read).
 
 Any amount left after that is **unexplained**. A posting can land a moment after the chain read, so a single unexplained amount is reported as *unsettled*. It becomes a **difference** only if it is still there on the next run, at least one finality period later.
 
@@ -75,4 +76,4 @@ None. The report is read through the CLI and the stored rows. An operator endpoi
   - Post a balanced entry that credits the vault account with no chain movement: R2.
   - Mark a payment final with the wrong amount: R4.
   - Make the fake provider report a different amount: R5.
-- **Timing:** a run paid but not yet final is listed as in flight, not as a difference. A deposit that isn't final yet needs no entry, because the ledger already holds it as pending.
+- **Timing:** a run paid but not yet final is listed as in flight, not as a difference. So is a deposit seen but not yet confirmed. Once confirmed, the ledger holds it as pending, so it needs no entry.
