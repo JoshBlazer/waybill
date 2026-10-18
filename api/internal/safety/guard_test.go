@@ -257,3 +257,27 @@ func TestCheck_StaticFailureSkipsNetwork(t *testing.T) {
 		t.Fatal("prober was called for a chain that failed the static check")
 	}
 }
+
+// byURLProber answers a chain id per URL.
+type byURLProber map[string]int64
+
+func (p byURLProber) ChainID(_ context.Context, url string) (*big.Int, error) {
+	return big.NewInt(p[url]), nil
+}
+
+// A fallback endpoint on another chain refuses startup: failing over must
+// never move to a different network (ADR-045).
+func TestCheck_FallbackOnAnotherChainIsRefused(t *testing.T) {
+	cfg := Config{Chains: []Chain{{Network: "evm:11155111", RPCURL: "https://a.example", Fallbacks: []string{"https://b.example"}}}}
+	if err := Check(context.Background(), cfg, byURLProber{"https://a.example": 11155111, "https://b.example": 11155111}); err != nil {
+		t.Fatalf("both on Sepolia: %v", err)
+	}
+	err := Check(context.Background(), cfg, byURLProber{"https://a.example": 11155111, "https://b.example": 1})
+	if err == nil || !strings.Contains(err.Error(), "b.example reports chain id 1") {
+		t.Fatalf("fallback on mainnet: %v", err)
+	}
+	cfg.Chains[0].Fallbacks = []string{"not a url"}
+	if err := CheckConfig(cfg); err == nil {
+		t.Fatal("a malformed fallback passed the static check")
+	}
+}

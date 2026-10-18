@@ -912,6 +912,29 @@ export interface components {
       networks: string[];
       /** @description Always true. The service refuses to start otherwise. */
       testMode: boolean;
+      /**
+       * @description Each network's RPC endpoints, primary first (ADR-045). An endpoint is
+       *     named by its host only. When every endpoint of a network is down,
+       *     `status` is `degraded`.
+       */
+      rpc?: components["schemas"]["RPCNetwork"][];
+    };
+    RPCNetwork: {
+      network: string;
+      endpoints: components["schemas"]["RPCEndpoint"][];
+    };
+    RPCEndpoint: {
+      /** @description The host, never the full URL (it can carry an API key). */
+      name: string;
+      /** @enum {string} */
+      state: "up" | "lagging" | "down";
+      /** @description The endpoint calls go to now. */
+      current: boolean;
+      /**
+       * Format: int64
+       * @description The last block height it reported.
+       */
+      head: number;
     };
     /** @description An exact amount. `minor` / 10^`scale` is the value in major units. */
     Amount: {

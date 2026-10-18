@@ -292,7 +292,7 @@ Runs first in `api`, `worker` and `watcher`.
 | Worker killed mid-job | Lease expires | Another worker re-runs the idempotent handler. Provider calls reuse the same reference. |
 | API crash after effect, before response | Client retries with the same idempotency key | The stored response is returned and the effect is not repeated. |
 | Chain reorg | Parent-hash mismatch | Walk back, mark orphaned payments, reverse ledger entries, rescan. The tracking page explains it in plain words. |
-| RPC down or erroring | Error result | Cursor does not advance. State is `unknown`, never "not paid". Failover to the next RPC *(stage 5)*. |
+| RPC down or erroring | Error result | Cursor does not advance. State is `unknown`, never "not paid". The call fails over to the next healthy RPC once (`rpcpool`, ADR-045); a JSON-RPC answer such as a revert is never retried elsewhere. |
 | Stuck transaction (fee too low) | Not mined after N blocks | Replace at the same nonce with both fees bumped. Record the new hash and watch all hashes. |
 | Gas estimation fails | Estimation error | A revert: do not broadcast, use no nonce, record the reason, alert (`TestTxMgr_RevertingCallIsRecordedNotSent`). Any other error is "could not find out": nothing is recorded and the caller retries (`TestTxMgr_UnreachableNodeIsNotAFailure`). |
 | Underpayment / overpayment | Confirmed amount ≠ due | `underpaid` / `overpaid` states, resolved by the contractor or a top-up. The amount is classified only once no payment to the invoice is still unconfirmed, so a payment in parts is not mistaken for an underpayment. Overpayment, including paying twice, is credited in full and shown on the receipt. Money arriving after `settled` is recorded and credited; the invoice stays settled. |

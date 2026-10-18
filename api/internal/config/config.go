@@ -136,7 +136,7 @@ func (c Config) NetworkIDs() []safety.Network {
 	return out
 }
 
-// RPCURL returns the RPC endpoint configured for n.
+// RPCURL returns the primary RPC endpoint configured for n.
 func (c Config) RPCURL(n safety.Network) string {
 	for _, ch := range c.Chains {
 		if ch.Network == n {
@@ -144,6 +144,16 @@ func (c Config) RPCURL(n safety.Network) string {
 		}
 	}
 	return ""
+}
+
+// RPCURLs returns every RPC endpoint configured for n, primary first.
+func (c Config) RPCURLs(n safety.Network) []string {
+	for _, ch := range c.Chains {
+		if ch.Network == n {
+			return ch.URLs()
+		}
+	}
+	return nil
 }
 
 // Networks lists the configured network identifiers.
@@ -164,8 +174,9 @@ func (c Config) RequireDatabase() error {
 }
 
 // ParseChains parses WAYBILL_CHAINS: a comma-separated list of
-// "<network>=<rpc url>", for example
-// "evm:31337=http://anvil:8545,evm:84532=https://sepolia.base.org".
+// "<network>=<rpc url>[|<fallback url>...]", for example
+// "evm:31337=http://anvil:8545,evm:84532=https://sepolia.base.org|https://base-sepolia-rpc.publicnode.com".
+// The first URL of each network is the primary (ADR-045).
 // Whether a network is allowed is decided by the safety package, not here.
 func ParseChains(raw string) ([]safety.Chain, error) {
 	raw = strings.TrimSpace(raw)
@@ -179,7 +190,18 @@ func ParseChains(raw string) ([]safety.Chain, error) {
 			// Report the position, not the item: it may contain an RPC key.
 			return nil, fmt.Errorf("WAYBILL_CHAINS entry %d is not of the form <network>=<rpc url>", i+1)
 		}
-		chains = append(chains, safety.Chain{Network: safety.Network(network), RPCURL: rpc})
+		urls := strings.Split(rpc, "|")
+		for j, u := range urls {
+			urls[j] = strings.TrimSpace(u)
+			if urls[j] == "" {
+				return nil, fmt.Errorf("WAYBILL_CHAINS entry %d has an empty endpoint", i+1)
+			}
+		}
+		ch := safety.Chain{Network: safety.Network(network), RPCURL: urls[0]}
+		if len(urls) > 1 {
+			ch.Fallbacks = urls[1:]
+		}
+		chains = append(chains, ch)
 	}
 	return chains, nil
 }

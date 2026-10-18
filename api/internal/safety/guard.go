@@ -49,7 +49,13 @@ const PaystackTestKeyPrefix = "sk_test_"
 type Chain struct {
 	Network Network
 	RPCURL  string
+	// Fallbacks are further endpoints for the same network, used when the
+	// primary fails (ADR-045). Each passes the same checks as RPCURL.
+	Fallbacks []string
 }
+
+// URLs is the primary endpoint and then the fallbacks.
+func (c Chain) URLs() []string { return append([]string{c.RPCURL}, c.Fallbacks...) }
 
 // Config is the subset of service configuration the guard inspects.
 type Config struct {
@@ -88,8 +94,10 @@ func CheckConfig(cfg Config) error {
 			errs = append(errs, fmt.Errorf("network %q is configured more than once", c.Network))
 		}
 		seen[c.Network] = true
-		if _, err := parseRPCURL(c.RPCURL); err != nil {
-			errs = append(errs, fmt.Errorf("network %q: %w", c.Network, err))
+		for i, u := range c.URLs() {
+			if _, err := parseRPCURL(u); err != nil {
+				errs = append(errs, fmt.Errorf("network %q endpoint %d: %w", c.Network, i+1, err))
+			}
 		}
 	}
 	if k := cfg.PaystackSecretKey; k != "" && !strings.HasPrefix(k, PaystackTestKeyPrefix) {
@@ -105,7 +113,6 @@ func CheckConfig(cfg Config) error {
 func CheckLive(ctx context.Context, cfg Config, prober ChainIDProber) error {
 	var errs []error
 	for _, c := range cfg.Chains {
-		host := RedactedHost(c.RPCURL)
 		family, id, _ := strings.Cut(string(c.Network), ":")
 		switch family {
 		case "evm":
@@ -114,15 +121,20 @@ func CheckLive(ctx context.Context, cfg Config, prober ChainIDProber) error {
 				errs = append(errs, fmt.Errorf("network %q: invalid EVM chain id", c.Network))
 				continue
 			}
-			pctx, cancel := context.WithTimeout(ctx, LiveCheckTimeout)
-			got, err := prober.ChainID(pctx, c.RPCURL)
-			cancel()
-			if err != nil {
-				errs = append(errs, fmt.Errorf("network %q: could not confirm chain id from RPC at %s: %w", c.Network, host, redactErr(err, c.RPCURL)))
-				continue
-			}
-			if got.Cmp(want) != 0 {
-				errs = append(errs, fmt.Errorf("network %q: RPC at %s reports chain id %s, want %s", c.Network, host, got, want))
+			// Every endpoint, fallbacks included: failing over must never
+			// move to another chain.
+			for _, u := range c.URLs() {
+				host := RedactedHost(u)
+				pctx, cancel := context.WithTimeout(ctx, LiveCheckTimeout)
+				got, err := prober.ChainID(pctx, u)
+				cancel()
+				if err != nil {
+					errs = append(errs, fmt.Errorf("network %q: could not confirm chain id from RPC at %s: %w", c.Network, host, redactErr(err, u)))
+					continue
+				}
+				if got.Cmp(want) != 0 {
+					errs = append(errs, fmt.Errorf("network %q: RPC at %s reports chain id %s, want %s", c.Network, host, got, want))
+				}
 			}
 		default:
 			errs = append(errs, fmt.Errorf("network %q: no live check is implemented for %q networks yet; refusing to start", c.Network, family))
