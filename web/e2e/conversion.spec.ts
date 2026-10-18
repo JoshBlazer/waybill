@@ -24,7 +24,10 @@ test("a contractor converts part of their USDC balance to naira", async ({
   test.setTimeout(180_000);
   // A verified bank account (the fake bank resolves it without a key).
   await page.goto("/account/bank");
-  await page.getByLabel("Bank").selectOption({ label: "Guaranty Trust Bank" });
+  // Exact: the loading placeholder is labelled "Loading your bank account".
+  const bank = page.getByLabel("Bank", { exact: true });
+  await expect(bank).toBeVisible();
+  await bank.selectOption({ label: "Guaranty Trust Bank" });
   await page.getByLabel("Account number").fill("0123456789");
   await page.getByRole("button", { name: "Check and save" }).click();
   await expect(page.getByRole("status")).toContainText("Saved.");
