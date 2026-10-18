@@ -46,6 +46,12 @@ body {
   animation: stamp-land 120ms ease-out;
 }
 
+/* A filled stamp (light text on the accent) prints solid: at 90% its small
+   text falls to the edge of WCAG AA contrast. */
+.stamp.stamp-solid {
+  opacity: 1;
+}
+
 @keyframes stamp-land {
   from {
     transform: rotate(-2deg) scale(1.08);

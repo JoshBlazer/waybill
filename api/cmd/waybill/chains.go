@@ -121,8 +121,8 @@ var (
 	devApproverID   = uuid.MustParse("00000000-0000-4000-8000-00000000e102")
 )
 
-// devContractorWallet is Anvil's second default account.
-const devContractorWallet = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
+// devContractorWallet is Anvil dev account #9 (#1 and #2 pay in the e2e tests).
+const devContractorWallet = "0xa0ee7a142d267c1f36714e4a8f75612f20a79720"
 
 // devOrgThreshold is 500 USDC: runs above it need a second person.
 var devOrgThreshold = money.FromInt64(500_000_000)
@@ -163,7 +163,7 @@ func runSeedDev(ctx context.Context, log *slog.Logger) error {
 			return err
 		}
 		// A payout wallet already past its 24-hour wait, so batch runs can
-		// pay the demo contractor at once. Anvil's second dev account: its
+		// pay the demo contractor at once. Anvil dev account #9: its
 		// key is public, which is fine for a local test chain only.
 		if _, err := q.UpsertContractorWallet(ctx, store.UpsertContractorWalletParams{
 			ContractorID: devContractorID, Network: string(safety.EVMAnvil), Address: devContractorWallet,
