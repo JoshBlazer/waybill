@@ -287,3 +287,21 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - The change is backward compatible: existing clients ignore the new field.
 - Without a Paystack key, the field is absent and the page shows only the stablecoin addresses.
 - The web app starts the checkout from a server action and redirects only to an `https://*.paystack.com` address.
+
+## ADR-043 Stage 4: organisations, roles and on-chain batch pay
+**Status:** Accepted, 2026-10-18 (owner approved the schema and API in [design/teams.md](design/teams.md), PR #22).
+**Context:** Stage 4 lets a payer team pay many contractors at once, with a second person approving large runs. It touches the schema (not the ledger tables) and adds to the public API, so it needs approval first.
+**Decision (proposed):**
+- Money and sign-in, chosen by the owner on 2026-10-18:
+  - Organisations fund a USDC balance by depositing on-chain to their own forwarder address.
+  - An approved run pays contractors registered wallets in one `BatchPayout` transaction.
+  - Members sign in with API keys; the web app acts as seeded demo members.
+- Roles are `admin`, `maker` and `approver`, with a per-organisation approval threshold.
+- Approver ≠ creator (I17) is enforced in code and in SQL, through a composite foreign key and a `CHECK`.
+- OpenAPI 0.6.0 adds the organisation, member, funding, payout-wallet and batch operations listed in the design note.
+**Consequences:**
+- Schema:
+  - New tables `payer_orgs`, `org_members`, `contractor_wallets`, `batches`, `batch_lines`, `approvals` and `batch_events`.
+  - `api_keys`, `deposit_addresses` and `payments` each gain an alternative owner, with a `CHECK` that exactly one owner is set.
+- Ledger: new account codes only (`liability:org:…`, `liability:batch:…`). No ledger schema change.
+- Contractor wallets get the same 24-hour cooling-off after a change as bank accounts.
