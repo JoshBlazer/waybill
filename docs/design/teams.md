@@ -1,6 +1,6 @@
 # Design note: teams and batch pay (stage 4)
 
-**Status:** proposed, waiting for the owner's approval (ADR-043). No code until it is approved.
+**Status:** approved 2026-10-18 (ADR-043); being implemented.
 **Covers:** the first two stage 4 roadmap items: payer organisations, members and roles; and batch pay (build, check, approve with approver ≠ creator, send through `BatchPayout`). Receipts and exports, contractor conversion and the reconciliation job will each get their own short note.
 **Owner decisions (2026-10-18):** money moves **on-chain to contractor wallets** through `BatchPayout`, funded from the organisation's USDC balance. Members sign in with **API keys**, and the web app acts as seeded demo members, as it does for the demo contractor today.
 
@@ -71,7 +71,7 @@ And on the run as a whole:
 | `confirming` | `reorged_out` | `sending` (the transaction manager rebroadcasts the same transaction) |
 
 - The machine is pure: `statemachine.BatchTransition`, with an exhaustive pair table test, like `InvoiceTransition` and `PayoutTransition`.
-- **Owner question:** CLAUDE.md says money rules are written test-first. Should I write `BatchTransition` myself under the same waiver as `PayoutTransition`, or will you write it?
+- Written test-first (CLAUDE.md), under the owner waiver of 2026-10-18.
 
 ## 6. Ledger
 

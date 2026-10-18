@@ -289,7 +289,7 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - The web app starts the checkout from a server action and redirects only to an `https://*.paystack.com` address.
 
 ## ADR-043 Stage 4: organisations, roles and on-chain batch pay
-**Status:** Proposed, 2026-10-18. Waiting for the owner to approve the schema and API in [design/teams.md](design/teams.md).
+**Status:** Accepted, 2026-10-18 (owner approved the schema and API in [design/teams.md](design/teams.md), PR #22).
 **Context:** Stage 4 lets a payer team pay many contractors at once, with a second person approving large runs. It touches the schema (not the ledger tables) and adds to the public API, so it needs approval first.
 **Decision (proposed):**
 - Money and sign-in, chosen by the owner on 2026-10-18:
