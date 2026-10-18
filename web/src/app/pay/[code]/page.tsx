@@ -5,6 +5,7 @@ import { Stamp } from "@/components/Stamp";
 import { apiBaseUrl, fetchPaymentLink } from "@/lib/api/client";
 import { formatAmountWithAsset } from "@/lib/money";
 import { CopyButton } from "./CopyButton";
+import { NairaPay } from "./NairaPay";
 import { WalletPayButton } from "./WalletPayButton";
 
 export const metadata: Metadata = {
@@ -22,6 +23,15 @@ const dateFormat = new Intl.DateTimeFormat("en-NG", {
   day: "numeric",
   month: "long",
   year: "numeric",
+  timeZone: "Africa/Lagos",
+});
+
+const dateTimeFormat = new Intl.DateTimeFormat("en-NG", {
+  day: "numeric",
+  month: "long",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23", // 24-hour clock: "08:24" cannot be misread
   timeZone: "Africa/Lagos",
 });
 
@@ -140,50 +150,62 @@ async function PayContent({ params }: { params: Promise<{ code: string }> }) {
           </Link>
         </section>
       ) : (
-        <section aria-labelledby="send-heading" className="flex flex-col gap-4">
-          <h2 id="send-heading" className="text-xl font-semibold">
-            Pay with stablecoin
-          </h2>
-          {p.depositAddresses.map((d) => (
-            <div
-              key={d.network}
-              className="flex flex-col gap-2 border border-ink p-4"
-            >
-              <p className="font-semibold">
-                {networkNames[d.network] ?? d.network}
-              </p>
-              <p className="text-sm text-ink-muted">
-                Send exactly {formatAmountWithAsset(p.amount)} to:
-              </p>
-              <p
-                className="font-mono text-sm break-all"
-                data-testid="deposit-address"
+        <>
+          {p.naira && (
+            <NairaPay
+              code={p.trackingCode}
+              amount={p.naira.amount}
+              until={`${dateTimeFormat.format(new Date(p.naira.expiresAt))} (Lagos time)`}
+            />
+          )}
+          <section
+            aria-labelledby="send-heading"
+            className="flex flex-col gap-4"
+          >
+            <h2 id="send-heading" className="text-xl font-semibold">
+              Pay with stablecoin
+            </h2>
+            {p.depositAddresses.map((d) => (
+              <div
+                key={d.network}
+                className="flex flex-col gap-2 border border-ink p-4"
               >
-                {d.address}
-              </p>
-              <CopyButton value={d.address} label="Copy address" />
-              <p className="text-sm">
-                Send only the test USDC token{" "}
-                <span className="font-mono break-all text-ink-muted">
-                  {d.token}
-                </span>{" "}
-                on this network. Anything else sent here cannot be credited
-                automatically.
-              </p>
-              <WalletPayButton
-                network={d.network}
-                token={d.token}
-                depositAddress={d.address}
-                minor={p.amount.minor}
-                displayAmount={formatAmountWithAsset(p.amount)}
-                trackingCode={p.trackingCode}
-              />
-            </div>
-          ))}
-          <Link href={`/t/${p.trackingCode}`} className="underline">
-            I&apos;ve sent it: track the payment
-          </Link>
-        </section>
+                <p className="font-semibold">
+                  {networkNames[d.network] ?? d.network}
+                </p>
+                <p className="text-sm text-ink-muted">
+                  Send exactly {formatAmountWithAsset(p.amount)} to:
+                </p>
+                <p
+                  className="font-mono text-sm break-all"
+                  data-testid="deposit-address"
+                >
+                  {d.address}
+                </p>
+                <CopyButton value={d.address} label="Copy address" />
+                <p className="text-sm">
+                  Send only the test USDC token{" "}
+                  <span className="font-mono break-all text-ink-muted">
+                    {d.token}
+                  </span>{" "}
+                  on this network. Anything else sent here cannot be credited
+                  automatically.
+                </p>
+                <WalletPayButton
+                  network={d.network}
+                  token={d.token}
+                  depositAddress={d.address}
+                  minor={p.amount.minor}
+                  displayAmount={formatAmountWithAsset(p.amount)}
+                  trackingCode={p.trackingCode}
+                />
+              </div>
+            ))}
+            <Link href={`/t/${p.trackingCode}`} className="underline">
+              I&apos;ve sent it: track the payment
+            </Link>
+          </section>
+        </>
       )}
       <p className="text-sm text-ink-muted">
         Test money only. Nothing here is real.

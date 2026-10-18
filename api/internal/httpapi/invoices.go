@@ -132,7 +132,20 @@ func (s *Server) GetPayment(ctx context.Context, req GetPaymentRequestObject) (G
 		DepositAddresses: depositJSON(inv),
 		State:            InvoiceState(inv.State),
 		ExpiresAt:        inv.ExpiresAt,
+		Naira:            s.payableInNaira(inv),
 	}), nil
+}
+
+// payableInNaira is the naira a payer can pay by card or bank transfer, or
+// nil when startCheckout would refuse.
+func (s *Server) payableInNaira(inv invoice.Invoice) *PaymentLinkNaira {
+	if s.Checkout == nil || s.Checkout.Payable(inv) != nil {
+		return nil
+	}
+	return &PaymentLinkNaira{
+		Amount:    Amount{Asset: string(money.NGN.Code), Minor: inv.NairaAmount().String(), Scale: int(money.NGN.Scale)},
+		ExpiresAt: inv.Quote.ExpiresAt.UTC(),
+	}
 }
 
 // GetTracking returns the four-step tracking view.

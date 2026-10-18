@@ -470,6 +470,22 @@ export interface components {
       state: components["schemas"]["InvoiceState"];
       /** Format: date-time */
       expiresAt: string;
+      naira?: components["schemas"]["PaymentLinkNaira"];
+    };
+    /**
+     * @description Present only when the link can be paid in naira by card or bank
+     *     transfer right now (`startCheckout` would accept it): the invoice is
+     *     open, pays out in naira, its quote has not expired and card pay-in
+     *     is configured. Absent otherwise; the stablecoin addresses always
+     *     work.
+     */
+    PaymentLinkNaira: {
+      amount: components["schemas"]["Amount"];
+      /**
+       * Format: date-time
+       * @description When the locked rate, and so this naira amount, expires.
+       */
+      expiresAt: string;
     };
     TrackingStep: {
       /** @enum {string} */

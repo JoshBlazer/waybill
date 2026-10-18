@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -739,6 +739,26 @@ components:
         expiresAt:
           type: string
           format: date-time
+        naira:
+          $ref: "#/components/schemas/PaymentLinkNaira"
+
+    PaymentLinkNaira:
+      type: object
+      additionalProperties: false
+      required: [amount, expiresAt]
+      description: |
+        Present only when the link can be paid in naira by card or bank
+        transfer right now (`startCheckout` would accept it): the invoice is
+        open, pays out in naira, its quote has not expired and card pay-in
+        is configured. Absent otherwise; the stablecoin addresses always
+        work.
+      properties:
+        amount:
+          $ref: "#/components/schemas/Amount"
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the locked rate, and so this naira amount, expires.
 
     TrackingStep:
       type: object

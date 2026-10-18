@@ -337,6 +337,9 @@ func TestStartCheckout(t *testing.T) {
 	if code, _ := post(naira["trackingCode"].(string)); code != http.StatusServiceUnavailable {
 		t.Fatalf("without Paystack: %d, want 503", code)
 	}
+	if body := e.payLink(t, naira["trackingCode"].(string)); body["naira"] != nil {
+		t.Fatalf("without Paystack the link offers naira: %v", body["naira"])
+	}
 	e.server.Checkout = &checkout.Service{Pool: e.pool, Charger: fakeCharger{}, Tokens: e.server.Tokens, WebURL: "http://web.test", Log: slog.New(slog.DiscardHandler)}
 	code, body := post(naira["trackingCode"].(string))
 	amt, _ := body["amount"].(map[string]any)
@@ -346,7 +349,25 @@ func TestStartCheckout(t *testing.T) {
 	if code, _ := post(hold["trackingCode"].(string)); code != http.StatusConflict {
 		t.Fatalf("stablecoin link: %d, want 409", code)
 	}
+	// The payment link offers naira exactly when the checkout would start.
+	n, _ := e.payLink(t, naira["trackingCode"].(string))["naira"].(map[string]any)
+	if amt, _ := n["amount"].(map[string]any); amt["minor"] != "19160712" || amt["asset"] != "NGN" || n["expiresAt"] == nil {
+		t.Fatalf("naira link offers %v", n)
+	}
+	if body := e.payLink(t, hold["trackingCode"].(string)); body["naira"] != nil {
+		t.Fatalf("stablecoin link offers naira: %v", body["naira"])
+	}
 	if code, _ := post("WB-0000-0000-0000-0000"); code != http.StatusNotFound {
 		t.Fatalf("unknown link: %d, want 404", code)
 	}
+}
+
+func (e *env) payLink(t *testing.T, code string) map[string]any {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/v1/pay/"+code, nil)
+	status, body := do(t, req)
+	if status != http.StatusOK {
+		t.Fatalf("GET /v1/pay/%s: %d %v", code, status, body)
+	}
+	return body
 }

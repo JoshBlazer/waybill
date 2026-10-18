@@ -198,3 +198,38 @@ export async function saveBankAccount(
   }
   return { kind: "unreachable", reason: `HTTP ${res.status}` };
 }
+
+export type Checkout = components["schemas"]["Checkout"];
+
+export type CheckoutResult =
+  | { kind: "started"; checkout: Checkout }
+  | { kind: "problem"; problem: Problem }
+  | { kind: "unreachable"; reason: string };
+
+/** Starts (or returns the open) Paystack test checkout for a payment link.
+ *  Public: payers have no account. Safe to repeat. */
+export async function startCheckout(
+  baseUrl: string,
+  code: string,
+): Promise<CheckoutResult> {
+  let res: Response;
+  try {
+    res = await fetch(
+      new URL(`/v1/pay/${encodeURIComponent(code)}/checkout`, baseUrl),
+      {
+        method: "POST",
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+  } catch {
+    return { kind: "unreachable", reason: "network error" };
+  }
+  if (res.status === 200) {
+    return { kind: "started", checkout: (await res.json()) as Checkout };
+  }
+  if (res.headers.get("content-type")?.includes("json")) {
+    return { kind: "problem", problem: (await res.json()) as Problem };
+  }
+  return { kind: "unreachable", reason: `HTTP ${res.status}` };
+}
