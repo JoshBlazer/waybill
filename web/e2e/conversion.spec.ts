@@ -5,6 +5,9 @@ import { mintTo } from "./chain";
 // Stage 4: a contractor holding USDC from a paid invoice converts part of it
 // to naira at a quoted rate; the naira is queued for their bank.
 async function expectNoViolations(page: Page, what: string) {
+  // Next.js streams metadata: after a redirect the title can arrive a
+  // moment after the body, and axe must see the finished page.
+  await expect(page).toHaveTitle(/Waybill/);
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
