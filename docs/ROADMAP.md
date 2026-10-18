@@ -79,6 +79,8 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 
 **Exit check:** an automated test runs a batch with dual approval to completion, and the reconciliation report shows zero differences.
 
+Result (2026-10-18): passed. `TestExitCheck_BatchWithDualApprovalCompletes` and `TestExitCheck_ReconciliationAfterDualApprovalRunIsClean` pass on Anvil. On the Compose stack, `make reconcile` after `make e2e` (7 of 7) shows 0 differences. `go test ./...` passed 289 tests at `035474d` (merged as `233adca`). Details in [the stage 4 walkthrough](walkthroughs/stage-4.md#exit-check).
+
 ## Stage 5 — Breadth and operations
 
 - [ ] Ethereum Sepolia as a second EVM network.
