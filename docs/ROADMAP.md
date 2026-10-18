@@ -75,7 +75,7 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 - [x] Batch pay: build, check, approve (approver ≠ creator), send through `BatchPayout`.
 - [ ] Invoices, receipts and accountant export (CSV and PDF).
 - [ ] Contractor balance and conversion at a quoted rate.
-- [ ] Reconciliation job: ledger against chain and provider, with a report.
+- [x] Reconciliation job: ledger against chain and provider, with a report ([design/reconciliation.md](design/reconciliation.md), ADR-044).
 
 **Exit check:** an automated test runs a batch with dual approval to completion, and the reconciliation report shows zero differences.
 

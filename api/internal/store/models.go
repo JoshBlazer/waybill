@@ -344,6 +344,15 @@ type RateQuote struct {
 	ExpiresAt  time.Time
 }
 
+type ReconciliationRun struct {
+	ID          uuid.UUID
+	StartedAt   time.Time
+	FinishedAt  time.Time
+	AsOf        []byte
+	Differences int32
+	Report      []byte
+}
+
 type SignerNonce struct {
 	Signer         string
 	Network        string

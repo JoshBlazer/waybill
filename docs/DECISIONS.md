@@ -305,3 +305,27 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
   - `api_keys`, `deposit_addresses` and `payments` each gain an alternative owner, with a `CHECK` that exactly one owner is set.
 - Ledger: new account codes only (`liability:org:…`, `liability:batch:…`). No ledger schema change.
 - Contractor wallets get the same 24-hour cooling-off after a change as bank accounts.
+
+## ADR-044 Stage 4 close: reconciliation, receipts and exports, contractor conversion
+**Status:** Accepted, 2026-10-18 (owner approved [design/reconciliation.md](design/reconciliation.md), [design/exports.md](design/exports.md) and [design/conversion.md](design/conversion.md) before they were built, and chose the PDF approach).
+**Context:** The last three stage 4 items add tables and public API, and PDFs could have needed a new dependency, so they needed approval first.
+**Decision:**
+- **Reconciliation:**
+  - A worker job and a `waybill reconcile` command compare the ledger with the chain and the provider, and store each report in `reconciliation_runs`.
+  - Balances are read at one block height, with money in flight listed by record.
+  - A balance that is off once is *unsettled*; it is a difference only if it is off again on the next run.
+  - It adds no public API.
+- **Receipts and exports:**
+  - Invoice and receipt documents, plus a CSV export of the caller's own postings, with a guard against formula injection.
+  - PDFs come from a small writer in the Go standard library, using built-in Helvetica (Latin-1 text, so amounts read "NGN 1,234.00"). No dependency is added.
+- **Conversion:**
+  - A contractor converts USDC balance to naira at a quote they accept before it expires. Waybill never re-quotes on accept.
+  - The accept books the same four-leg entry as an invoice payout's conversion, and queues a payout through the existing pipeline.
+  - `payouts` gains `conversion_id`, with a `CHECK` that exactly one of `invoice_id` and `conversion_id` is set.
+- OpenAPI 0.7.0 adds the balance, conversion, receipt and export operations listed in the notes.
+**Consequences:**
+- **Schema:** new tables `reconciliation_runs` and `conversions`. `payouts.invoice_id` and `payout_events.invoice_id` become nullable. The ledger tables are unchanged.
+- **Not compared by reconciliation:**
+  - The Paystack balance, which in test mode holds a prefund the ledger never sees.
+  - The FX position, which is treasury work (RISKS).
+- **Provider checks:** reported as *skipped*, not passed, when no Paystack key is configured.

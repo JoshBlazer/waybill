@@ -13,7 +13,7 @@ GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
         lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
-        env fixtures check-fixtures
+        env fixtures check-fixtures reconcile
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -113,6 +113,9 @@ e2e: web/node_modules ## End-to-end tests against the running stack (run make up
 		-v "$(CURDIR)/web:/web" -w /web \
 		-e E2E_BASE_URL=http://web:3000 -e E2E_API_URL=http://api:8080 -e E2E_RPC_URL=http://anvil:8545 \
 		$(PLAYWRIGHT_IMAGE) npx playwright test
+
+reconcile: env ## Reconcile the running stack: ledger against chain and provider; fails on any difference
+	$(COMPOSE) exec -T worker waybill reconcile --settle --wait 20s --full
 
 # Initial JavaScript per page, gzipped (docs/DESIGN.md §6, ADR-033).
 JS_BUDGET := 185000
