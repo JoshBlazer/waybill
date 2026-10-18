@@ -104,40 +104,50 @@ var authenticatedOperations = map[string]bool{
 	"AcceptShortfall":       true,
 	"ListPayoutWallets":     true,
 	"SetPayoutWallet":       true,
+	"GetInvoiceDocument":    true,
+	"GetInvoiceReceipt":     true,
+	"GetInvoiceReceiptPdf":  true,
 }
 
 // memberOperations lists the operations that need an organisation
 // member's key (stage 4, ADR-043). Like authenticatedOperations, it is kept
 // in step with the spec by TestAuthenticatedOperationsMatchSpec.
 var memberOperations = map[string]bool{
-	"GetOrg":       true,
-	"UpdateOrg":    true,
-	"ListMembers":  true,
-	"AddMember":    true,
-	"UpdateMember": true,
-	"GetFunding":   true,
-	"CreateBatch":  true,
-	"ListBatches":  true,
-	"GetBatch":     true,
-	"ApproveBatch": true,
-	"RejectBatch":  true,
-	"SendBatch":    true,
-	"CancelBatch":  true,
+	"GetOrg":             true,
+	"UpdateOrg":          true,
+	"ListMembers":        true,
+	"AddMember":          true,
+	"UpdateMember":       true,
+	"GetFunding":         true,
+	"CreateBatch":        true,
+	"ListBatches":        true,
+	"GetBatch":           true,
+	"GetBatchReceipt":    true,
+	"GetBatchReceiptPdf": true,
+	"ApproveBatch":       true,
+	"RejectBatch":        true,
+	"SendBatch":          true,
+	"CancelBatch":        true,
+}
+
+// eitherKeyOperations accept a contractor's or a member's key and act for
+// whichever it is (ADR-044).
+var eitherKeyOperations = map[string]bool{
+	"ExportLedger": true,
 }
 
 // IsAuthenticated reports whether an operation requires a key.
 func IsAuthenticated(operationID string) bool {
-	return authenticatedOperations[operationID] || memberOperations[operationID]
+	return authenticatedOperations[operationID] || memberOperations[operationID] || eitherKeyOperations[operationID]
 }
 
 // AuthenticatedOperations lists the operations that require a key.
 func AuthenticatedOperations() []string {
-	out := make([]string, 0, len(authenticatedOperations)+len(memberOperations))
-	for op := range authenticatedOperations {
-		out = append(out, op)
-	}
-	for op := range memberOperations {
-		out = append(out, op)
+	out := make([]string, 0, len(authenticatedOperations)+len(memberOperations)+len(eitherKeyOperations))
+	for _, ops := range []map[string]bool{authenticatedOperations, memberOperations, eitherKeyOperations} {
+		for op := range ops {
+			out = append(out, op)
+		}
 	}
 	return out
 }
@@ -165,16 +175,19 @@ func NewHandler(s *Server) http.Handler {
 // nor a member key a contractor operation.
 func (s *Server) authMiddleware(f StrictHandlerFunc, operationID string) StrictHandlerFunc {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
-		forContractor, forMember := authenticatedOperations[operationID], memberOperations[operationID]
-		if !forContractor && !forMember {
+		forContractor, forMember, forEither := authenticatedOperations[operationID], memberOperations[operationID], eitherKeyOperations[operationID]
+		if !forContractor && !forMember && !forEither {
 			return f(ctx, w, r, req)
 		}
 		title := "A valid contractor API key is required."
-		if forMember {
+		switch {
+		case forEither:
+			title = "A valid contractor or organisation member API key is required."
+		case forMember:
 			title = "A valid organisation member API key is required."
 		}
 		p, err := auth.Authenticate(ctx, s.Pool, r.Header.Get("Authorization"))
-		if err == nil && p.IsMember() != forMember {
+		if err == nil && !forEither && p.IsMember() != forMember {
 			err = auth.ErrUnauthenticated
 		}
 		if errors.Is(err, auth.ErrUnauthenticated) {

@@ -500,6 +500,35 @@ type BatchList struct {
 	Data []Batch `json:"data"`
 }
 
+// BatchReceipt defines model for BatchReceipt.
+type BatchReceipt struct {
+	ApprovedBy []string `json:"approvedBy"`
+
+	// CreatedBy The member's name.
+	CreatedBy    string             `json:"createdBy"`
+	Id           openapi_types.UUID `json:"id"`
+	Lines        []BatchReceiptLine `json:"lines"`
+	Network      string             `json:"network"`
+	Organisation string             `json:"organisation"`
+	PaidAt       time.Time          `json:"paidAt"`
+	SentBy       *string            `json:"sentBy,omitempty"`
+
+	// Total An exact amount. `minor` / 10^`scale` is the value in major units.
+	Total  Amount `json:"total"`
+	TxHash string `json:"txHash"`
+}
+
+// BatchReceiptLine defines model for BatchReceiptLine.
+type BatchReceiptLine struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount         Amount `json:"amount"`
+	ContractorName string `json:"contractorName"`
+	LineNo         int    `json:"lineNo"`
+	Reference      string `json:"reference"`
+	TrackingCode   string `json:"trackingCode"`
+	Wallet         string `json:"wallet"`
+}
+
 // BatchState defines model for BatchState.
 type BatchState string
 
@@ -686,6 +715,23 @@ type Invoice struct {
 // InvoicePayout defines model for Invoice.Payout.
 type InvoicePayout string
 
+// InvoiceReceipt defines model for InvoiceReceipt.
+type InvoiceReceipt struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount         Amount             `json:"amount"`
+	Card           *ReceiptCard       `json:"card,omitempty"`
+	ContractorName string             `json:"contractorName"`
+	Description    string             `json:"description"`
+	InvoiceId      openapi_types.UUID `json:"invoiceId"`
+	Payments       []ReceiptPayment   `json:"payments"`
+	Payout         *ReceiptPayout     `json:"payout,omitempty"`
+
+	// Received The sum of the final on-chain payments.
+	Received     Amount    `json:"received"`
+	SettledAt    time.Time `json:"settledAt"`
+	TrackingCode string    `json:"trackingCode"`
+}
+
 // InvoiceState defines model for InvoiceState.
 type InvoiceState string
 
@@ -819,6 +865,35 @@ type Quote struct {
 
 	// SpreadBps Waybill's margin in basis points, already taken out of `rate`.
 	SpreadBps int `json:"spreadBps"`
+}
+
+// ReceiptCard defines model for ReceiptCard.
+type ReceiptCard struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount    Amount    `json:"amount"`
+	PaidAt    time.Time `json:"paidAt"`
+	Reference string    `json:"reference"`
+}
+
+// ReceiptPayment defines model for ReceiptPayment.
+type ReceiptPayment struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount  Amount    `json:"amount"`
+	FinalAt time.Time `json:"finalAt"`
+	Network string    `json:"network"`
+	TxHash  string    `json:"txHash"`
+}
+
+// ReceiptPayout defines model for ReceiptPayout.
+type ReceiptPayout struct {
+	// Naira An exact amount. `minor` / 10^`scale` is the value in major units.
+	Naira Amount `json:"naira"`
+
+	// Rate Naira per one unit of the invoice's asset.
+	Rate      *Amount    `json:"rate,omitempty"`
+	Reference string     `json:"reference"`
+	SentAt    *time.Time `json:"sentAt,omitempty"`
+	State     string     `json:"state"`
 }
 
 // SetBankAccountRequest defines model for SetBankAccountRequest.
@@ -965,6 +1040,15 @@ type CreateBatchParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// ExportLedgerParams defines parameters for ExportLedger.
+type ExportLedgerParams struct {
+	// From First day included (UTC).
+	From openapi_types.Date `form:"from" json:"from"`
+
+	// To First day not included (UTC). At most 366 days after `from`.
+	To openapi_types.Date `form:"to" json:"to"`
+}
+
 // CreateInvoiceParams defines parameters for CreateInvoice.
 type CreateInvoiceParams struct {
 	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
@@ -1062,12 +1146,21 @@ type ServerInterface interface {
 	// CancelBatch Withdraw a run that has not been sent. Makers and admins.
 	// (POST /v1/batches/{id}/cancel)
 	CancelBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// GetBatchReceipt The receipt for a paid run.
+	// (GET /v1/batches/{id}/receipt)
+	GetBatchReceipt(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// GetBatchReceiptPdf The receipt for a paid run, as a PDF.
+	// (GET /v1/batches/{id}/receipt.pdf)
+	GetBatchReceiptPdf(w http.ResponseWriter, r *http.Request, id ResourceId)
 	// RejectBatch Refuse a run above the threshold. Approvers only.
 	// (POST /v1/batches/{id}/reject)
 	RejectBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
 	// SendBatch Send a run. Makers only.
 	// (POST /v1/batches/{id}/send)
 	SendBatch(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// ExportLedger The caller's own postings in a date range, as CSV for an accountant.
+	// (GET /v1/exports/ledger.csv)
+	ExportLedger(w http.ResponseWriter, r *http.Request, params ExportLedgerParams)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1080,6 +1173,15 @@ type ServerInterface interface {
 	// AcceptShortfall Accept an underpaid invoice as paid.
 	// (POST /v1/invoices/{id}/accept-shortfall)
 	AcceptShortfall(w http.ResponseWriter, r *http.Request, id ResourceId, params AcceptShortfallParams)
+	// GetInvoiceDocument The invoice as a PDF.
+	// (GET /v1/invoices/{id}/document.pdf)
+	GetInvoiceDocument(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// GetInvoiceReceipt What arrived for a settled invoice, and what was sent on.
+	// (GET /v1/invoices/{id}/receipt)
+	GetInvoiceReceipt(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// GetInvoiceReceiptPdf The receipt for a settled invoice, as a PDF.
+	// (GET /v1/invoices/{id}/receipt.pdf)
+	GetInvoiceReceiptPdf(w http.ResponseWriter, r *http.Request, id ResourceId)
 	// GetBankAccount The contractor's payout bank account.
 	// (GET /v1/me/bank-account)
 	GetBankAccount(w http.ResponseWriter, r *http.Request)
@@ -1384,6 +1486,58 @@ func (siw *ServerInterfaceWrapper) CancelBatch(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetBatchReceipt operation middleware
+func (siw *ServerInterfaceWrapper) GetBatchReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBatchReceipt(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBatchReceiptPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetBatchReceiptPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBatchReceiptPdf(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RejectBatch operation middleware
 func (siw *ServerInterfaceWrapper) RejectBatch(w http.ResponseWriter, r *http.Request) {
 
@@ -1427,6 +1581,52 @@ func (siw *ServerInterfaceWrapper) SendBatch(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SendBatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportLedger operation middleware
+func (siw *ServerInterfaceWrapper) ExportLedger(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportLedgerParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportLedger(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1566,6 +1766,84 @@ func (siw *ServerInterfaceWrapper) AcceptShortfall(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AcceptShortfall(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoiceDocument operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoiceDocument(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoiceDocument(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoiceReceipt operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoiceReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoiceReceipt(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoiceReceiptPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoiceReceiptPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoiceReceiptPdf(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2194,6 +2472,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/reject", wrapper.RejectBatch)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/send", wrapper.SendBatch)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/batches/{id}/cancel", wrapper.CancelBatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/invoices/{id}/document.pdf", wrapper.GetInvoiceDocument)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/invoices/{id}/receipt", wrapper.GetInvoiceReceipt)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/invoices/{id}/receipt.pdf", wrapper.GetInvoiceReceiptPdf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches/{id}/receipt", wrapper.GetBatchReceipt)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches/{id}/receipt.pdf", wrapper.GetBatchReceiptPdf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/exports/ledger.csv", wrapper.ExportLedger)
 
 	return m
 }
@@ -2759,6 +3043,152 @@ func (response CancelBatch409ApplicationProblemPlusJSONResponse) VisitCancelBatc
 	return err
 }
 
+type GetBatchReceiptRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetBatchReceiptResponseObject interface {
+	VisitGetBatchReceiptResponse(w http.ResponseWriter) error
+}
+
+type GetBatchReceipt200JSONResponse BatchReceipt
+
+func (response GetBatchReceipt200JSONResponse) VisitGetBatchReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceipt401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetBatchReceipt401ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceipt404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBatchReceipt404ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceipt409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBatchReceipt409ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceiptPdfRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetBatchReceiptPdfResponseObject interface {
+	VisitGetBatchReceiptPdfResponse(w http.ResponseWriter) error
+}
+
+type GetBatchReceiptPdf200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type GetBatchReceiptPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	Headers       GetBatchReceiptPdf200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetBatchReceiptPdf200ApplicationpdfResponse) VisitGetBatchReceiptPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetBatchReceiptPdf401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetBatchReceiptPdf401ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceiptPdf404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBatchReceiptPdf404ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBatchReceiptPdf409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetBatchReceiptPdf409ApplicationProblemPlusJSONResponse) VisitGetBatchReceiptPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RejectBatchRequestObject struct {
 	Id ResourceId `json:"id"`
 }
@@ -2922,6 +3352,72 @@ func (response SendBatch409ApplicationProblemPlusJSONResponse) VisitSendBatchRes
 type SendBatch422ApplicationProblemPlusJSONResponse Problem
 
 func (response SendBatch422ApplicationProblemPlusJSONResponse) VisitSendBatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportLedgerRequestObject struct {
+	Params ExportLedgerParams
+}
+
+type ExportLedgerResponseObject interface {
+	VisitExportLedgerResponse(w http.ResponseWriter) error
+}
+
+type ExportLedger200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type ExportLedger200TextcsvResponse struct {
+	Body          io.Reader
+	Headers       ExportLedger200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ExportLedger200TextcsvResponse) VisitExportLedgerResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportLedger401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ExportLedger401ApplicationProblemPlusJSONResponse) VisitExportLedgerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportLedger422ApplicationProblemPlusJSONResponse Problem
+
+func (response ExportLedger422ApplicationProblemPlusJSONResponse) VisitExportLedgerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3171,6 +3667,218 @@ func (response AcceptShortfall404ApplicationProblemPlusJSONResponse) VisitAccept
 type AcceptShortfall409ApplicationProblemPlusJSONResponse Problem
 
 func (response AcceptShortfall409ApplicationProblemPlusJSONResponse) VisitAcceptShortfallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceDocumentRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetInvoiceDocumentResponseObject interface {
+	VisitGetInvoiceDocumentResponse(w http.ResponseWriter) error
+}
+
+type GetInvoiceDocument200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type GetInvoiceDocument200ApplicationpdfResponse struct {
+	Body          io.Reader
+	Headers       GetInvoiceDocument200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetInvoiceDocument200ApplicationpdfResponse) VisitGetInvoiceDocumentResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoiceDocument401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetInvoiceDocument401ApplicationProblemPlusJSONResponse) VisitGetInvoiceDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceDocument404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoiceDocument404ApplicationProblemPlusJSONResponse) VisitGetInvoiceDocumentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceiptRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetInvoiceReceiptResponseObject interface {
+	VisitGetInvoiceReceiptResponse(w http.ResponseWriter) error
+}
+
+type GetInvoiceReceipt200JSONResponse InvoiceReceipt
+
+func (response GetInvoiceReceipt200JSONResponse) VisitGetInvoiceReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceipt401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetInvoiceReceipt401ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceipt404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoiceReceipt404ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceipt409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoiceReceipt409ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceiptPdfRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetInvoiceReceiptPdfResponseObject interface {
+	VisitGetInvoiceReceiptPdfResponse(w http.ResponseWriter) error
+}
+
+type GetInvoiceReceiptPdf200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type GetInvoiceReceiptPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	Headers       GetInvoiceReceiptPdf200ResponseHeaders
+	ContentLength int64
+}
+
+func (response GetInvoiceReceiptPdf200ApplicationpdfResponse) VisitGetInvoiceReceiptPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoiceReceiptPdf401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetInvoiceReceiptPdf401ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceiptPdf404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoiceReceiptPdf404ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoiceReceiptPdf409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetInvoiceReceiptPdf409ApplicationProblemPlusJSONResponse) VisitGetInvoiceReceiptPdfResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4243,12 +4951,21 @@ type StrictServerInterface interface {
 	// CancelBatch Withdraw a run that has not been sent. Makers and admins.
 	// (POST /v1/batches/{id}/cancel)
 	CancelBatch(ctx context.Context, request CancelBatchRequestObject) (CancelBatchResponseObject, error)
+	// GetBatchReceipt The receipt for a paid run.
+	// (GET /v1/batches/{id}/receipt)
+	GetBatchReceipt(ctx context.Context, request GetBatchReceiptRequestObject) (GetBatchReceiptResponseObject, error)
+	// GetBatchReceiptPdf The receipt for a paid run, as a PDF.
+	// (GET /v1/batches/{id}/receipt.pdf)
+	GetBatchReceiptPdf(ctx context.Context, request GetBatchReceiptPdfRequestObject) (GetBatchReceiptPdfResponseObject, error)
 	// RejectBatch Refuse a run above the threshold. Approvers only.
 	// (POST /v1/batches/{id}/reject)
 	RejectBatch(ctx context.Context, request RejectBatchRequestObject) (RejectBatchResponseObject, error)
 	// SendBatch Send a run. Makers only.
 	// (POST /v1/batches/{id}/send)
 	SendBatch(ctx context.Context, request SendBatchRequestObject) (SendBatchResponseObject, error)
+	// ExportLedger The caller's own postings in a date range, as CSV for an accountant.
+	// (GET /v1/exports/ledger.csv)
+	ExportLedger(ctx context.Context, request ExportLedgerRequestObject) (ExportLedgerResponseObject, error)
 	// GetHealth Report service health.
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -4261,6 +4978,15 @@ type StrictServerInterface interface {
 	// AcceptShortfall Accept an underpaid invoice as paid.
 	// (POST /v1/invoices/{id}/accept-shortfall)
 	AcceptShortfall(ctx context.Context, request AcceptShortfallRequestObject) (AcceptShortfallResponseObject, error)
+	// GetInvoiceDocument The invoice as a PDF.
+	// (GET /v1/invoices/{id}/document.pdf)
+	GetInvoiceDocument(ctx context.Context, request GetInvoiceDocumentRequestObject) (GetInvoiceDocumentResponseObject, error)
+	// GetInvoiceReceipt What arrived for a settled invoice, and what was sent on.
+	// (GET /v1/invoices/{id}/receipt)
+	GetInvoiceReceipt(ctx context.Context, request GetInvoiceReceiptRequestObject) (GetInvoiceReceiptResponseObject, error)
+	// GetInvoiceReceiptPdf The receipt for a settled invoice, as a PDF.
+	// (GET /v1/invoices/{id}/receipt.pdf)
+	GetInvoiceReceiptPdf(ctx context.Context, request GetInvoiceReceiptPdfRequestObject) (GetInvoiceReceiptPdfResponseObject, error)
 	// GetBankAccount The contractor's payout bank account.
 	// (GET /v1/me/bank-account)
 	GetBankAccount(ctx context.Context, request GetBankAccountRequestObject) (GetBankAccountResponseObject, error)
@@ -4601,6 +5327,58 @@ func (sh *strictHandler) CancelBatch(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
+// GetBatchReceipt operation middleware
+func (sh *strictHandler) GetBatchReceipt(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetBatchReceiptRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBatchReceipt(ctx, request.(GetBatchReceiptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBatchReceipt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBatchReceiptResponseObject); ok {
+		if err := validResponse.VisitGetBatchReceiptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBatchReceiptPdf operation middleware
+func (sh *strictHandler) GetBatchReceiptPdf(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetBatchReceiptPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBatchReceiptPdf(ctx, request.(GetBatchReceiptPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBatchReceiptPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBatchReceiptPdfResponseObject); ok {
+		if err := validResponse.VisitGetBatchReceiptPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RejectBatch operation middleware
 func (sh *strictHandler) RejectBatch(w http.ResponseWriter, r *http.Request, id ResourceId) {
 	var request RejectBatchRequestObject
@@ -4646,6 +5424,32 @@ func (sh *strictHandler) SendBatch(w http.ResponseWriter, r *http.Request, id Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendBatchResponseObject); ok {
 		if err := validResponse.VisitSendBatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportLedger operation middleware
+func (sh *strictHandler) ExportLedger(w http.ResponseWriter, r *http.Request, params ExportLedgerParams) {
+	var request ExportLedgerRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportLedger(ctx, request.(ExportLedgerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportLedger")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportLedgerResponseObject); ok {
+		if err := validResponse.VisitExportLedgerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4756,6 +5560,84 @@ func (sh *strictHandler) AcceptShortfall(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AcceptShortfallResponseObject); ok {
 		if err := validResponse.VisitAcceptShortfallResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoiceDocument operation middleware
+func (sh *strictHandler) GetInvoiceDocument(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetInvoiceDocumentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoiceDocument(ctx, request.(GetInvoiceDocumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoiceDocument")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoiceDocumentResponseObject); ok {
+		if err := validResponse.VisitGetInvoiceDocumentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoiceReceipt operation middleware
+func (sh *strictHandler) GetInvoiceReceipt(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetInvoiceReceiptRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoiceReceipt(ctx, request.(GetInvoiceReceiptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoiceReceipt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoiceReceiptResponseObject); ok {
+		if err := validResponse.VisitGetInvoiceReceiptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoiceReceiptPdf operation middleware
+func (sh *strictHandler) GetInvoiceReceiptPdf(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetInvoiceReceiptPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoiceReceiptPdf(ctx, request.(GetInvoiceReceiptPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoiceReceiptPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoiceReceiptPdfResponseObject); ok {
+		if err := validResponse.VisitGetInvoiceReceiptPdfResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

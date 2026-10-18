@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mintTo } from "./chain";
@@ -93,6 +94,35 @@ test("a run above the threshold needs a second person, then pays in one transact
   }).toPass({ timeout: 120_000 });
   await expect(page.getByText(/^Transaction 0x[0-9a-f]{64}$/)).toBeVisible();
   await expectNoViolations(page, "paid run");
+
+  // The run's receipt downloads as a PDF.
+  const [receipt] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("link", { name: "Download the receipt (PDF)" }).click(),
+  ]);
+  expect(receipt.suggestedFilename()).toMatch(/^run-[0-9a-f-]{36}\.pdf$/);
+  const pdf = await readFile(await receipt.path());
+  expect(pdf.subarray(0, 8).toString("latin1")).toBe("%PDF-1.4");
+  expect(pdf.toString("latin1")).toContain("(Payment run receipt) Tj");
+
+  // So does the organisation's export, with the run as money out.
+  const runUrl = page.url();
+  await page.goto("/org");
+  const [csv] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download CSV" }).click(),
+  ]);
+  const rows = (await readFile(await csv.path()))
+    .toString("utf8")
+    .trim()
+    .split("\n");
+  expect(rows[0]).toBe(
+    "date,waybill_reference,description,asset,money_in,money_out,balance,chain_tx,provider_reference",
+  );
+  expect(rows.some((r) => r.includes(",Payment run,USDC,,550.000000,"))).toBe(
+    true,
+  );
+  await page.goto(runUrl);
 
   // The contractor's line has its own tracking page, delivered.
   await page.getByRole("link", { name: "Track this payment" }).click();

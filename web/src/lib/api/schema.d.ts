@@ -609,10 +609,180 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/invoices/{id}/document.pdf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The invoice as a PDF. */
+    get: operations["getInvoiceDocument"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/invoices/{id}/receipt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What arrived for a settled invoice, and what was sent on. */
+    get: operations["getInvoiceReceipt"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/invoices/{id}/receipt.pdf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The receipt for a settled invoice, as a PDF. */
+    get: operations["getInvoiceReceiptPdf"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/receipt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The receipt for a paid run. */
+    get: operations["getBatchReceipt"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/batches/{id}/receipt.pdf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The receipt for a paid run, as a PDF. */
+    get: operations["getBatchReceiptPdf"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/exports/ledger.csv": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The caller's own postings in a date range, as CSV for an accountant.
+     * @description One row per posting on the caller's available balances, oldest
+     *     first: `date, waybill_reference, description, asset, money_in,
+     *     money_out, balance, chain_tx, provider_reference`. Amounts are
+     *     decimals in the asset's unit. A cell that a spreadsheet would run as
+     *     a formula is prefixed with `'`. A contractor key exports the
+     *     contractor's balances; a member key, the organisation's.
+     */
+    get: operations["exportLedger"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    InvoiceReceipt: {
+      /** Format: uuid */
+      invoiceId: string;
+      trackingCode: string;
+      contractorName: string;
+      description: string;
+      amount: components["schemas"]["Amount"];
+      /** @description The sum of the final on-chain payments. */
+      received: components["schemas"]["Amount"];
+      /** Format: date-time */
+      settledAt: string;
+      payments: components["schemas"]["ReceiptPayment"][];
+      card?: components["schemas"]["ReceiptCard"];
+      payout?: components["schemas"]["ReceiptPayout"];
+    };
+    ReceiptPayment: {
+      network: string;
+      txHash: string;
+      amount: components["schemas"]["Amount"];
+      /** Format: date-time */
+      finalAt: string;
+    };
+    ReceiptCard: {
+      reference: string;
+      amount: components["schemas"]["Amount"];
+      /** Format: date-time */
+      paidAt: string;
+    };
+    ReceiptPayout: {
+      state: string;
+      naira: components["schemas"]["Amount"];
+      /** @description Naira per one unit of the invoice's asset. */
+      rate?: components["schemas"]["Amount"];
+      reference: string;
+      /** Format: date-time */
+      sentAt?: string;
+    };
+    BatchReceipt: {
+      /** Format: uuid */
+      id: string;
+      organisation: string;
+      network: string;
+      total: components["schemas"]["Amount"];
+      txHash: string;
+      /** Format: date-time */
+      paidAt: string;
+      /** @description The member's name. */
+      createdBy: string;
+      approvedBy: string[];
+      sentBy?: string;
+      lines: components["schemas"]["BatchReceiptLine"][];
+    };
+    BatchReceiptLine: {
+      lineNo: number;
+      contractorName: string;
+      wallet: string;
+      amount: components["schemas"]["Amount"];
+      reference: string;
+      trackingCode: string;
+    };
     Health: {
       /** @enum {string} */
       status: "ok" | "degraded";
@@ -2019,6 +2189,161 @@ export interface operations {
       403: components["responses"]["Problem"];
       404: components["responses"]["Problem"];
       409: components["responses"]["Problem"];
+    };
+  };
+  getInvoiceDocument: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The invoice. */
+      200: {
+        headers: {
+          "Content-Disposition"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/pdf": string;
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+    };
+  };
+  getInvoiceReceipt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The receipt. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InvoiceReceipt"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  getInvoiceReceiptPdf: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The receipt. */
+      200: {
+        headers: {
+          "Content-Disposition"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/pdf": string;
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  getBatchReceipt: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The receipt. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BatchReceipt"];
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  getBatchReceiptPdf: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The receipt. */
+      200: {
+        headers: {
+          "Content-Disposition"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/pdf": string;
+        };
+      };
+      401: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  exportLedger: {
+    parameters: {
+      query: {
+        /** @description First day included (UTC). */
+        from: string;
+        /** @description First day not included (UTC). At most 366 days after `from`. */
+        to: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The export. */
+      200: {
+        headers: {
+          "Content-Disposition"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
+        };
+      };
+      401: components["responses"]["Problem"];
+      422: components["responses"]["Problem"];
     };
   };
 }

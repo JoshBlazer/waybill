@@ -21,9 +21,11 @@ type Querier interface {
 	// Accounts whose cached balance differs from the sum of their postings.
 	// Must always return no rows.
 	BalanceCacheMismatches(ctx context.Context) ([]BalanceCacheMismatchesRow, error)
+	BatchRefs(ctx context.Context, ids []uuid.UUID) ([]BatchRefsRow, error)
 	// Pending deliveries to a disabled endpoint stop. Outbox jobs are not
 	// deleted; they are marked done, so the history stays.
 	CancelWebhookJobs(ctx context.Context, endpointID string) error
+	CheckoutRefs(ctx context.Context, ids []uuid.UUID) ([]CheckoutRefsRow, error)
 	// Idempotency ----------------------------------------------------------------
 	// Inserts the key inside the caller's transaction. A concurrent request
 	// with the same key blocks here until the first transaction ends.
@@ -86,6 +88,7 @@ type Querier interface {
 	GetOutboundTx(ctx context.Context, id uuid.UUID) (OutboundTx, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
+	GetPaidCheckoutForInvoice(ctx context.Context, invoiceID uuid.UUID) (GetPaidCheckoutForInvoiceRow, error)
 	GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error)
 	GetPayoutByReference(ctx context.Context, reference string) (Payout, error)
 	GetRateQuote(ctx context.Context, id uuid.UUID) (RateQuote, error)
@@ -129,6 +132,7 @@ type Querier interface {
 	InsertWebhookDelivery(ctx context.Context, arg InsertWebhookDeliveryParams) error
 	// Events and deliveries ---------------------------------------------------
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) error
+	InvoiceSettledAt(ctx context.Context, invoiceID uuid.UUID) (time.Time, error)
 	KillOutbox(ctx context.Context, arg KillOutboxParams) (int64, error)
 	// Record checks start from the last run with no differences; a run that
 	// found one keeps checking everything since the last clean run.
@@ -161,6 +165,11 @@ type Querier interface {
 	ListDepositAddressesByNetwork(ctx context.Context, network string) ([]string, error)
 	// Open invoices past their expiry, oldest first.
 	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
+	// Every posting on the given accounts in [from, to), oldest first.
+	ListExportPostings(ctx context.Context, arg ListExportPostingsParams) ([]ListExportPostingsRow, error)
+	// Invoices, receipts and the accountant export (docs/design/exports.md).
+	// Read-only.
+	ListFinalPaymentsForInvoice(ctx context.Context, invoiceID *uuid.UUID) ([]ListFinalPaymentsForInvoiceRow, error)
 	ListFinalPaymentsSince(ctx context.Context, arg ListFinalPaymentsSinceParams) ([]ListFinalPaymentsSinceRow, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
@@ -213,6 +222,8 @@ type Querier interface {
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)
 	MarkProviderEventProcessed(ctx context.Context, id int64) error
+	PaymentRefs(ctx context.Context, ids []uuid.UUID) ([]PaymentRefsRow, error)
+	PayoutRefs(ctx context.Context, ids []uuid.UUID) ([]PayoutRefsRow, error)
 	// Confirms the database answers queries, not only that a connection opens.
 	Ping(ctx context.Context) (int32, error)
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
@@ -238,6 +249,8 @@ type Querier interface {
 	SumOrgPaymentsByState(ctx context.Context, arg SumOrgPaymentsByStateParams) (money.Amount, error)
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)
+	// Opening balances: the sum per account of everything before from.
+	SumPostingsBefore(ctx context.Context, arg SumPostingsBeforeParams) ([]SumPostingsBeforeRow, error)
 	// Records use at most once a minute per key, so authentication does not
 	// write on every request.
 	TouchAPIKey(ctx context.Context, prefix string) error
