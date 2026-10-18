@@ -64,7 +64,7 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 - [x] Payout state machine: design note, `statemachine.PayoutTransition`, and the exhaustive pair table.
 - [x] Paystack test-mode payout: transfer recipient, transfer, reconcile by reference, `unknown` state.
 - [x] Paystack incoming webhooks: verify, store raw, process once.
-- [ ] Card and bank pay-in through Paystack test checkout. *API and reconciliation done (`api/internal/checkout`); the payment page button needs the link to say it can be paid in naira.*
+- [x] Card and bank pay-in through Paystack test checkout (payment link says when it can be paid in naira: ADR-042).
 - [x] Underpayment resolution flow (top-up, or `POST /v1/invoices/{id}/accept-shortfall`).
 
 **Exit check:** a link is paid and a test-mode naira payout completes end to end, proven by an automated test against Paystack test mode.

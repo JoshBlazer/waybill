@@ -63,4 +63,28 @@ test("a contractor adds a bank account and gets a locked naira rate", async ({
     ),
   ).toBeVisible();
   await expectNoViolations(page, "naira invoice created");
+
+  // The payment link offers card or bank transfer only when the API says it
+  // can be paid that way (a Paystack test key is configured). Either way
+  // the stablecoin addresses are there.
+  await page.getByRole("link", { name: "Open payment link" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Pay with stablecoin" }),
+  ).toBeVisible();
+  const code = page.url().split("/pay/")[1];
+  const api = process.env.E2E_API_URL ?? "http://localhost:8080";
+  const link = await (await page.request.get(`${api}/v1/pay/${code}`)).json();
+  const naira = page.getByRole("region", { name: "Pay in naira" });
+  if (!link.naira) {
+    await expect(naira).toHaveCount(0);
+    return;
+  }
+  await expect(naira).toContainText(
+    /Pay ₦[\d,]+\.\d{2} by card or bank transfer/,
+  );
+  await expectNoViolations(page, "payment link with naira");
+  await naira
+    .getByRole("button", { name: "Pay by card or bank transfer" })
+    .click();
+  await page.waitForURL(/^https:\/\/checkout\.paystack\.com\//);
 });

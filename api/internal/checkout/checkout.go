@@ -65,6 +65,22 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
+// Payable reports whether inv can be paid by card or bank transfer now:
+// nil, ErrNotPayable (with the reason) or ErrUnavailable.
+func (s *Service) Payable(inv invoice.Invoice) error {
+	switch {
+	case inv.Quote == nil:
+		return fmt.Errorf("%w: it is paid out in stablecoin; pay in stablecoin", ErrNotPayable)
+	case statemachine.InvoiceState(inv.State) != statemachine.InvoiceOpen:
+		return fmt.Errorf("%w: it is %s", ErrNotPayable, inv.State)
+	case !s.now().Before(inv.Quote.ExpiresAt):
+		return fmt.Errorf("%w: its naira rate expired; ask the contractor for a new link", ErrNotPayable)
+	case s.Charger == nil:
+		return ErrUnavailable
+	}
+	return nil
+}
+
 // Start returns the invoice's open checkout, or creates one. The invoice
 // must be open, pay out in naira, and have an unexpired quote.
 func (s *Service) Start(ctx context.Context, code string) (store.Checkout, invoice.Invoice, error) {
@@ -76,15 +92,8 @@ func (s *Service) Start(ctx context.Context, code string) (store.Checkout, invoi
 		return store.Checkout{}, invoice.Invoice{}, err
 	}
 	now := s.now()
-	switch {
-	case inv.Quote == nil:
-		return store.Checkout{}, inv, fmt.Errorf("%w: it is paid out in stablecoin; pay in stablecoin", ErrNotPayable)
-	case statemachine.InvoiceState(inv.State) != statemachine.InvoiceOpen:
-		return store.Checkout{}, inv, fmt.Errorf("%w: it is %s", ErrNotPayable, inv.State)
-	case !now.Before(inv.Quote.ExpiresAt):
-		return store.Checkout{}, inv, fmt.Errorf("%w: its naira rate expired; ask the contractor for a new link", ErrNotPayable)
-	case s.Charger == nil:
-		return store.Checkout{}, inv, ErrUnavailable
+	if err := s.Payable(inv); err != nil {
+		return store.Checkout{}, inv, err
 	}
 	q := store.New(s.Pool)
 	if open, err := q.GetOpenCheckout(ctx, inv.ID); err == nil && open.AuthorizationUrl != nil && now.Before(open.ExpiresAt) {

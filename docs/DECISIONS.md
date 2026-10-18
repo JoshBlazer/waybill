@@ -278,3 +278,12 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
 - Payout reference = payout id, so Paystack itself refuses a duplicate.
 - Account numbers are shown only as their last four digits after saving.
 - Checkout: Paystack requires a payer email and payers have no accounts, so checkouts send `pay-<tracking code>@example.com` (test mode accepts any address). A live deployment would ask the payer.
+
+## ADR-042 Payment links say when they can be paid in naira
+**Status:** Accepted, 2026-10-18 (owner approved the field before it was built).
+**Context:** The payment page needs to know whether to offer card or bank transfer, and for how much, before the payer clicks. `startCheckout` already decides this, but only after it is called.
+**Decision:** OpenAPI 0.5.0 adds an optional `naira` object to `PaymentLink`, with the naira `amount` and the quote's `expiresAt`. It is present only when `startCheckout` would accept the link right now: the invoice is open, pays out in naira, its quote has not expired, and card pay-in is configured. One function (`checkout.Service.Payable`) answers both questions, so the page and the checkout cannot disagree.
+**Consequences:**
+- The change is backward compatible: existing clients ignore the new field.
+- Without a Paystack key, the field is absent and the page shows only the stablecoin addresses.
+- The web app starts the checkout from a server action and redirects only to an `https://*.paystack.com` address.

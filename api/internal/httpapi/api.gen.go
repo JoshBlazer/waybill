@@ -515,11 +515,31 @@ type PaymentLink struct {
 	DepositAddresses []DepositAddress `json:"depositAddresses"`
 	Description      string           `json:"description"`
 	ExpiresAt        time.Time        `json:"expiresAt"`
-	State            InvoiceState     `json:"state"`
-	TrackingCode     string           `json:"trackingCode"`
+
+	// Naira Present only when the link can be paid in naira by card or bank
+	// transfer right now (`startCheckout` would accept it): the invoice is
+	// open, pays out in naira, its quote has not expired and card pay-in
+	// is configured. Absent otherwise; the stablecoin addresses always
+	// work.
+	Naira        *PaymentLinkNaira `json:"naira,omitempty"`
+	State        InvoiceState      `json:"state"`
+	TrackingCode string            `json:"trackingCode"`
 
 	// Verified True when the name has been verified against the contractor's bank account.
 	Verified bool `json:"verified"`
+}
+
+// PaymentLinkNaira Present only when the link can be paid in naira by card or bank
+// transfer right now (`startCheckout` would accept it): the invoice is
+// open, pays out in naira, its quote has not expired and card pay-in
+// is configured. Absent otherwise; the stablecoin addresses always
+// work.
+type PaymentLinkNaira struct {
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount Amount `json:"amount"`
+
+	// ExpiresAt When the locked rate, and so this naira amount, expires.
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // Payout defines model for Payout.

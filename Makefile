@@ -104,7 +104,7 @@ e2e: web/node_modules ## End-to-end tests against the running stack (run make up
 	docker run --rm --init --ipc=host --network waybill_default \
 		--user "$$(id -u):$$(id -g)" -e HOME=/tmp \
 		-v "$(CURDIR)/web:/web" -w /web \
-		-e E2E_BASE_URL=http://web:3000 -e E2E_RPC_URL=http://anvil:8545 \
+		-e E2E_BASE_URL=http://web:3000 -e E2E_API_URL=http://api:8080 -e E2E_RPC_URL=http://anvil:8545 \
 		$(PLAYWRIGHT_IMAGE) npx playwright test
 
 # Initial JavaScript per page, gzipped (docs/DESIGN.md §6, ADR-033).
