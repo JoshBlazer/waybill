@@ -13,11 +13,7 @@ GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
         lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
-<<<<<<< HEAD
-        env fixtures check-fixtures reconcile up-observability live-evm
-=======
-        env fixtures check-fixtures reconcile up-observability up-bitcoin
->>>>>>> origin/main
+        env fixtures check-fixtures reconcile up-observability up-bitcoin live-evm
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -66,16 +62,14 @@ up: env contracts/lib/forge-std/src ## Build and start the local stack; waits un
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
 
-<<<<<<< HEAD
 live-evm: ## Live check on Ethereum Sepolia (CHAIN=84532 for Base Sepolia); asks for a throwaway key
 	scripts/live-evm.sh $(or $(CHAIN),11155111)
-=======
+
 # Adds a Bitcoin regtest node: BTC invoices, the Bitcoin watcher and the
 # Bitcoin custody check (ADR-045).
 BTC_CHAINS := evm:31337=http://anvil:8545,btc:regtest=http://waybill:waybill-local-only@bitcoind:18443
 up-bitcoin: env contracts/lib/forge-std/src ## make up plus a Bitcoin regtest node and BTC invoices
 	WAYBILL_CHAINS=$(BTC_CHAINS) WAYBILL_BTC_XPUB_REGTEST_FILE=/btc/xpub $(COMPOSE) --profile bitcoin up --build --detach --wait
->>>>>>> origin/main
 
 up-observability: env contracts/lib/forge-std/src ## make up plus metrics and traces in Grafana (http://localhost:53001)
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318 $(COMPOSE) --profile observability up --build --detach --wait
