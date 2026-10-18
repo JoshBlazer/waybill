@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -1469,6 +1469,45 @@ components:
         testMode:
           type: boolean
           description: Always true. The service refuses to start otherwise.
+        rpc:
+          type: array
+          description: |
+            Each network's RPC endpoints, primary first (ADR-045). An endpoint is
+            named by its host only. When every endpoint of a network is down,
+            `status` is `degraded`.
+          items:
+            $ref: "#/components/schemas/RPCNetwork"
+
+    RPCNetwork:
+      type: object
+      additionalProperties: false
+      required: [network, endpoints]
+      properties:
+        network:
+          type: string
+        endpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/RPCEndpoint"
+
+    RPCEndpoint:
+      type: object
+      additionalProperties: false
+      required: [name, state, current, head]
+      properties:
+        name:
+          type: string
+          description: The host, never the full URL (it can carry an API key).
+        state:
+          type: string
+          enum: [up, lagging, down]
+        current:
+          type: boolean
+          description: The endpoint calls go to now.
+        head:
+          type: integer
+          format: int64
+          description: The last block height it reported.
 
     Amount:
       type: object

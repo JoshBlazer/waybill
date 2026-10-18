@@ -18,6 +18,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
 	"github.com/JoshBlazer/waybill/api/internal/org"
 	"github.com/JoshBlazer/waybill/api/internal/paystack"
+	"github.com/JoshBlazer/waybill/api/internal/rpcpool"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 )
 
@@ -49,6 +50,8 @@ type Server struct {
 	Batches     *batch.Service        // contractor wallets and batch runs (stage 4)
 	Conversions *conversion.Service   // contractor balance conversion (stage 4)
 	Now         func() time.Time      // nil means time.Now
+	// RPC reports each network's endpoints for /v1/health (ADR-045).
+	RPC []*rpcpool.Pool
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -68,6 +71,22 @@ func (s *Server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHe
 	}
 	if h.Networks == nil {
 		h.Networks = []string{}
+	}
+	if len(s.RPC) > 0 {
+		nets := make([]RPCNetwork, 0, len(s.RPC))
+		for _, p := range s.RPC {
+			n := RPCNetwork{Network: p.Network()}
+			reachable := false
+			for _, e := range p.Status() {
+				n.Endpoints = append(n.Endpoints, RPCEndpoint{Name: e.Name, State: RPCEndpointState(e.State), Current: e.Current, Head: int64(e.Head)}) //nolint:gosec // block heights fit
+				reachable = reachable || e.State != rpcpool.Down
+			}
+			if !reachable {
+				h.Status = HealthStatusDegraded
+			}
+			nets = append(nets, n)
+		}
+		h.Rpc = &nets
 	}
 	pctx, cancel := context.WithTimeout(ctx, healthDBTimeout)
 	defer cancel()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,16 +22,21 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/deployments"
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/money"
+	"github.com/JoshBlazer/waybill/api/internal/rpcpool"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 	"github.com/JoshBlazer/waybill/api/internal/watcher"
 )
 
-// evmChain is one verified EVM network.
+// evmChain is one verified EVM network. Its client fails over between the
+// configured endpoints (ADR-045).
 type evmChain struct {
 	deployment deployments.Deployment
-	client     *ethclient.Client
+	client     *rpcpool.Pool
 }
+
+// rpcHealthInterval is how often the head of every endpoint is read.
+const rpcHealthInterval = 15 * time.Second
 
 // setupChains loads every EVM deployment, verifies it against its chain and
 // records its token in chain_tokens. Any failure refuses startup: a wrong
@@ -42,10 +48,19 @@ func setupChains(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log
 	}
 	out := make(map[safety.Network]evmChain, len(deps))
 	for n, d := range deps {
-		client, err := ethclient.DialContext(ctx, cfg.RPCURL(n))
-		if err != nil {
-			return nil, fmt.Errorf("%s: dial RPC at %s: %w", n, safety.RedactedHost(cfg.RPCURL(n)), err)
+		var eps []rpcpool.Endpoint
+		for _, u := range cfg.RPCURLs(n) {
+			c, err := ethclient.DialContext(ctx, u)
+			if err != nil {
+				return nil, fmt.Errorf("%s: dial RPC at %s: %w", n, safety.RedactedHost(u), err)
+			}
+			eps = append(eps, rpcpool.Endpoint{Name: safety.RedactedHost(u), Client: c})
 		}
+		client, err := rpcpool.New(string(n), eps, rpcpool.Options{Log: log})
+		if err != nil {
+			return nil, err
+		}
+		go client.Run(ctx, rpcHealthInterval)
 		vctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err = deployments.Verify(vctx, client, d)
 		cancel()
@@ -228,4 +243,22 @@ func batchService(pool *pgxpool.Pool, chains map[safety.Network]evmChain, log *s
 		svc.Limits[n] = batch.ChainVault{Client: c.client, Vault: c.deployment.Vault, Token: c.deployment.Token}
 	}
 	return svc
+}
+
+// pools lists the networks' RPC pools, in a stable order, for /v1/health.
+func pools(chains map[safety.Network]evmChain) []*rpcpool.Pool {
+	out := make([]*rpcpool.Pool, 0, len(chains))
+	for _, n := range sortedNetworks(chains) {
+		out = append(out, chains[n].client)
+	}
+	return out
+}
+
+func sortedNetworks(chains map[safety.Network]evmChain) []safety.Network {
+	out := make([]safety.Network, 0, len(chains))
+	for n := range chains {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out
 }

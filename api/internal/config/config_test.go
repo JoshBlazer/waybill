@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,9 +27,23 @@ func TestParseChains(t *testing.T) {
 		t.Fatalf("got %d chains, want %d", len(got), len(want))
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if !reflect.DeepEqual(got[i], want[i]) {
 			t.Errorf("chain %d = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestParseChains_Fallbacks(t *testing.T) {
+	got, err := ParseChains("evm:11155111=https://a.example | https://b.example|https://c.example/KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := safety.Chain{Network: "evm:11155111", RPCURL: "https://a.example", Fallbacks: []string{"https://b.example", "https://c.example/KEY"}}
+	if len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+		t.Fatalf("got %+v", got)
+	}
+	if _, err := ParseChains("evm:11155111=https://a.example||https://SECRET"); err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("empty endpoint: %v", err)
 	}
 }
 

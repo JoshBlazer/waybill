@@ -134,6 +134,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			}},
 			Tokens: tokens,
 			WebURL: cfg.WebURL,
+			RPC:    pools(chains),
 
 			WebhookAllowPrivate: cfg.WebhookAllowPrivate,
 			Broker:              broker,

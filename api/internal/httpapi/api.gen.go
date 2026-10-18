@@ -286,6 +286,27 @@ func (e PayoutState) Valid() bool {
 	}
 }
 
+// Defines values for RPCEndpointState.
+const (
+	Down    RPCEndpointState = "down"
+	Lagging RPCEndpointState = "lagging"
+	Up      RPCEndpointState = "up"
+)
+
+// Valid indicates whether the value is a known member of the RPCEndpointState enum.
+func (e RPCEndpointState) Valid() bool {
+	switch e {
+	case Down:
+		return true
+	case Lagging:
+		return true
+	case Up:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TrackingStepStatus.
 const (
 	Checking TrackingStepStatus = "checking"
@@ -743,8 +764,13 @@ type Health struct {
 	Database HealthDatabase `json:"database"`
 
 	// Networks Configured networks, each verified as a test network at startup.
-	Networks []string     `json:"networks"`
-	Status   HealthStatus `json:"status"`
+	Networks []string `json:"networks"`
+
+	// Rpc Each network's RPC endpoints, primary first (ADR-045). An endpoint is
+	// named by its host only. When every endpoint of a network is down,
+	// `status` is `degraded`.
+	Rpc    *[]RPCNetwork `json:"rpc,omitempty"`
+	Status HealthStatus  `json:"status"`
 
 	// TestMode Always true. The service refuses to start otherwise.
 	TestMode bool `json:"testMode"`
@@ -938,6 +964,28 @@ type Quote struct {
 
 	// SpreadBps Waybill's margin in basis points, already taken out of `rate`.
 	SpreadBps int `json:"spreadBps"`
+}
+
+// RPCEndpoint defines model for RPCEndpoint.
+type RPCEndpoint struct {
+	// Current The endpoint calls go to now.
+	Current bool `json:"current"`
+
+	// Head The last block height it reported.
+	Head int64 `json:"head"`
+
+	// Name The host, never the full URL (it can carry an API key).
+	Name  string           `json:"name"`
+	State RPCEndpointState `json:"state"`
+}
+
+// RPCEndpointState defines model for RPCEndpoint.State.
+type RPCEndpointState string
+
+// RPCNetwork defines model for RPCNetwork.
+type RPCNetwork struct {
+	Endpoints []RPCEndpoint `json:"endpoints"`
+	Network   string        `json:"network"`
 }
 
 // ReceiptCard defines model for ReceiptCard.
