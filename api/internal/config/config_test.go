@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -131,5 +132,31 @@ func TestLoadFrom_Rates(t *testing.T) {
 		if _, err := LoadFrom(env(map[string]string{"WAYBILL_RATE_SPREAD_BPS": bad})); err == nil {
 			t.Errorf("spread %q accepted", bad)
 		}
+	}
+}
+
+func TestLoadFrom_BTCXPubFromFileOrValue(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/xpub"
+	if err := os.WriteFile(path, []byte("tpubFROMFILE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFrom(env(map[string]string{"WAYBILL_BTC_XPUB_REGTEST_FILE": path, "WAYBILL_BTC_XPUB_SIGNET": "tpubVALUE"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cfg.BTCXPub(safety.BTCRegtest); err != nil || got != "tpubFROMFILE" {
+		t.Fatalf("regtest from file: %q, %v", got, err)
+	}
+	if got, err := cfg.BTCXPub(safety.BTCSignet); err != nil || got != "tpubVALUE" {
+		t.Fatalf("signet from value: %q, %v", got, err)
+	}
+	both, _ := LoadFrom(env(map[string]string{"WAYBILL_BTC_XPUB_REGTEST": "a", "WAYBILL_BTC_XPUB_REGTEST_FILE": path}))
+	if _, err := both.BTCXPub(safety.BTCRegtest); err == nil {
+		t.Fatal("both the value and the file were accepted")
+	}
+	none, _ := LoadFrom(env(nil))
+	if _, err := none.BTCXPub(safety.BTCRegtest); err == nil || !strings.Contains(err.Error(), "WAYBILL_BTC_XPUB_REGTEST") {
+		t.Fatalf("unset: %v", err)
 	}
 }

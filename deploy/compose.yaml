@@ -80,7 +80,9 @@ services:
     command: ["seed-dev"]
     environment: &app-env
       DATABASE_URL: postgres://waybill:waybill-local-only@postgres:5432/waybill?sslmode=disable
-      WAYBILL_CHAINS: evm:31337=http://anvil:8545
+      # make up-bitcoin adds btc:regtest and the xpub file (ADR-045).
+      WAYBILL_CHAINS: ${WAYBILL_CHAINS:-evm:31337=http://anvil:8545}
+      WAYBILL_BTC_XPUB_REGTEST_FILE: ${WAYBILL_BTC_XPUB_REGTEST_FILE:-}
       WAYBILL_DEPLOYMENTS_DIR: /deployments
       WAYBILL_WEB_URL: http://localhost:${WAYBILL_WEB_PORT:-3000}
       WAYBILL_DEV_CONTRACTOR_KEY: ${WAYBILL_DEV_CONTRACTOR_KEY:?run make up, which generates deploy/.env}
@@ -97,6 +99,7 @@ services:
       # points it at the lgtm container.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
+      btc-setup: { condition: service_completed_successfully, required: false }
       migrate: { condition: service_completed_successfully }
     restart: "no"
 
@@ -107,7 +110,7 @@ services:
     environment:
       <<: *app-env
       HTTP_ADDR: ":8080"
-    volumes: [deployments:/deployments:ro]
+    volumes: [deployments:/deployments:ro, btc:/btc:ro]
     ports: ["127.0.0.1:${WAYBILL_API_PORT:-8080}:8080"]
     depends_on:
       seed: { condition: service_completed_successfully }
@@ -124,7 +127,7 @@ services:
     pull_policy: never
     command: ["watcher"]
     environment: *app-env
-    volumes: [deployments:/deployments:ro]
+    volumes: [deployments:/deployments:ro, btc:/btc:ro]
     depends_on:
       seed: { condition: service_completed_successfully }
       contracts: { condition: service_completed_successfully }
@@ -141,7 +144,7 @@ services:
       <<: *app-env
       # The service signing key. Only the worker signs.
       WAYBILL_SIGNER_KEY: ${WAYBILL_SIGNER_KEY:?run make up, which adds it to deploy/.env}
-    volumes: [deployments:/deployments:ro]
+    volumes: [deployments:/deployments:ro, btc:/btc:ro]
     depends_on:
       seed: { condition: service_completed_successfully }
       contracts: { condition: service_completed_successfully }
@@ -160,13 +163,29 @@ services:
       api: { condition: service_healthy }
     mem_limit: 512m
 
-  # Opt-in: `docker compose --profile bitcoin up`. Used from stage 5.
+  # Opt-in (ADR-045): make up-bitcoin. A regtest node, pinned by digest. Its
+  # "custody" wallet stands in for the offline key holder; Waybill reads
+  # only the xpub that btc-setup writes to the btc volume.
   bitcoind:
+    image: bitcoin/bitcoin:28.1@sha256:f332e1117453886b704e8f985dc21594917e79422860effe7842f2aa45a3ac6e
     profiles: [bitcoin]
-    image: bitcoin/bitcoin:29.4
-    command: ["-regtest=1", "-server=1", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=waybill", "-rpcpassword=waybill-local-only", "-fallbackfee=0.0002"]
-    ports: ["127.0.0.1:18443:18443"]
+    command: ["bitcoind", "-regtest", "-server", "-rpcuser=waybill", "-rpcpassword=waybill-local-only",
+              "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-fallbackfee=0.0002", "-printtoconsole"]
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=waybill", "-rpcpassword=waybill-local-only", "getblockcount"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     mem_limit: 512m
+
+  btc-setup:
+    image: bitcoin/bitcoin:28.1@sha256:f332e1117453886b704e8f985dc21594917e79422860effe7842f2aa45a3ac6e
+    profiles: [bitcoin]
+    entrypoint: ["/bin/sh", "/setup.sh"]
+    volumes: [./bitcoin/setup.sh:/setup.sh:ro, btc:/btc]
+    depends_on:
+      bitcoind: { condition: service_healthy }
+    restart: "no"
 
   # Opt-in (ADR-045): make up-observability. One container with an OTLP
   # collector, Tempo (traces), Prometheus (metrics) and Grafana with the
@@ -183,3 +202,4 @@ services:
 volumes:
   pgdata:
   deployments:
+  btc:

@@ -13,7 +13,7 @@ GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
         lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
-        env fixtures check-fixtures reconcile up-observability
+        env fixtures check-fixtures reconcile up-observability up-bitcoin
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -62,12 +62,18 @@ up: env contracts/lib/forge-std/src ## Build and start the local stack; waits un
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
 
+# Adds a Bitcoin regtest node: BTC invoices, the Bitcoin watcher and the
+# Bitcoin custody check (ADR-045).
+BTC_CHAINS := evm:31337=http://anvil:8545,btc:regtest=http://waybill:waybill-local-only@bitcoind:18443
+up-bitcoin: env contracts/lib/forge-std/src ## make up plus a Bitcoin regtest node and BTC invoices
+	WAYBILL_CHAINS=$(BTC_CHAINS) WAYBILL_BTC_XPUB_REGTEST_FILE=/btc/xpub $(COMPOSE) --profile bitcoin up --build --detach --wait
+
 up-observability: env contracts/lib/forge-std/src ## make up plus metrics and traces in Grafana (http://localhost:53001)
 	OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm:4318 $(COMPOSE) --profile observability up --build --detach --wait
 	@echo "Grafana: http://localhost:$${WAYBILL_GRAFANA_PORT:-53001} (dashboard: Waybill)"
 
 down: env ## Stop the local stack and delete its volumes
-	$(COMPOSE) --profile observability down --volumes --remove-orphans
+	$(COMPOSE) --profile observability --profile bitcoin down --volumes --remove-orphans
 
 logs: env ## Follow logs from the local stack
 	$(COMPOSE) logs --follow
@@ -116,6 +122,7 @@ e2e: web/node_modules ## End-to-end tests against the running stack (run make up
 		--user "$$(id -u):$$(id -g)" -e HOME=/tmp \
 		-v "$(CURDIR)/web:/web" -w /web \
 		-e E2E_BASE_URL=http://web:3000 -e E2E_API_URL=http://api:8080 -e E2E_RPC_URL=http://anvil:8545 \
+		-e E2E_BTC_RPC_URL=http://waybill:waybill-local-only@bitcoind:18443 \
 		$(PLAYWRIGHT_IMAGE) npx playwright test
 
 reconcile: env ## Reconcile the running stack: ledger against chain and provider; fails on any difference

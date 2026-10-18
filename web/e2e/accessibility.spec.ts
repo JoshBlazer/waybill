@@ -17,6 +17,9 @@ async function expectNoViolations(page: Page, what: string) {
 }
 
 test("every thin-slice page passes axe (WCAG 2.1 AA)", async ({ page }) => {
+  // Many pages, each analysed by axe: about 40 s alone, 85 s on a busy
+  // machine. The default 90 s left no room.
+  test.setTimeout(180_000);
   await page.goto("/");
   await expect(
     page.getByRole("img", { name: /The Waybill service is running\./ }),

@@ -136,7 +136,8 @@ func (s *Server) GetFunding(ctx context.Context, _ GetFundingRequestObject) (Get
 	}
 	out := Funding{DepositAddresses: make([]DepositAddress, len(f.Addresses)), Pending: usdcAmount(f.Pending), Available: usdcAmount(f.Available)}
 	for i, a := range f.Addresses {
-		out.DepositAddresses[i] = DepositAddress{Network: string(a.Network), Address: a.Address, Token: a.Token}
+		tok := a.Token
+		out.DepositAddresses[i] = DepositAddress{Network: string(a.Network), Address: a.Address, Token: &tok}
 	}
 	return GetFunding200JSONResponse(out), nil
 }
