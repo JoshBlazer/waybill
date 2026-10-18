@@ -291,7 +291,11 @@ func (s *Service) convert(ctx context.Context, p store.Payout) error {
 				return store.New(tx).SetPayoutConversion(ctx, store.SetPayoutConversionParams{ID: p.ID, NairaAmount: p.SourceAmount})
 			})
 	}
-	inv, err := q.GetInvoiceForUpdate(ctx, p.InvoiceID) // plain read outside a transaction
+	if p.InvoiceID == nil {
+		// Only invoice payouts start queued; a conversion's starts converted.
+		return fmt.Errorf("payout %s: queued without an invoice", p.ID)
+	}
+	inv, err := q.GetInvoiceForUpdate(ctx, *p.InvoiceID) // plain read outside a transaction
 	if err != nil {
 		return err
 	}

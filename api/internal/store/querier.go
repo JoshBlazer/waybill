@@ -35,6 +35,7 @@ type Querier interface {
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	// Only the current lease holder can finish a job.
 	CompleteOutbox(ctx context.Context, arg CompleteOutboxParams) (int64, error)
+	ConversionRefs(ctx context.Context, ids []uuid.UUID) ([]ConversionRefsRow, error)
 	// Lines to this contractor with this reference that this organisation has
 	// paid or may still pay in the last 30 days.
 	CountRecentLinePayments(ctx context.Context, arg CountRecentLinePaymentsParams) (int64, error)
@@ -74,6 +75,7 @@ type Querier interface {
 	GetContractorByID(ctx context.Context, id uuid.UUID) (Contractor, error)
 	// Contractor payout wallets and batch runs (docs/design/teams.md).
 	GetContractorWallet(ctx context.Context, arg GetContractorWalletParams) (ContractorWallet, error)
+	GetConversion(ctx context.Context, arg GetConversionParams) (GetConversionRow, error)
 	GetIdempotencyRecord(ctx context.Context, arg GetIdempotencyRecordParams) (IdempotencyKey, error)
 	GetInvoiceByTrackingCode(ctx context.Context, trackingCode string) (GetInvoiceByTrackingCodeRow, error)
 	GetInvoiceForContractor(ctx context.Context, arg GetInvoiceForContractorParams) (GetInvoiceForContractorRow, error)
@@ -89,6 +91,7 @@ type Querier interface {
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
 	GetPaidCheckoutForInvoice(ctx context.Context, invoiceID uuid.UUID) (GetPaidCheckoutForInvoiceRow, error)
+	GetPayoutByConversion(ctx context.Context, conversionID *uuid.UUID) (Payout, error)
 	GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error)
 	GetPayoutByReference(ctx context.Context, reference string) (Payout, error)
 	GetRateQuote(ctx context.Context, id uuid.UUID) (RateQuote, error)
@@ -106,6 +109,10 @@ type Querier interface {
 	InsertBatchLine(ctx context.Context, arg InsertBatchLineParams) error
 	// Another open checkout for the invoice wins the race: no row is returned.
 	InsertCheckout(ctx context.Context, arg InsertCheckoutParams) (Checkout, error)
+	// Contractor balance conversion (docs/design/conversion.md).
+	InsertConversion(ctx context.Context, arg InsertConversionParams) (Conversion, error)
+	// The naira is fixed at acceptance, so the payout starts converted.
+	InsertConversionPayout(ctx context.Context, arg InsertConversionPayoutParams) (Payout, error)
 	InsertDepositAddress(ctx context.Context, arg InsertDepositAddressParams) error
 	// A transaction that failed before a nonce was assigned. Nothing was sent.
 	InsertFailedOutboundTx(ctx context.Context, arg InsertFailedOutboundTxParams) (OutboundTx, error)
@@ -159,6 +166,7 @@ type Querier interface {
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
+	ListConversions(ctx context.Context, arg ListConversionsParams) ([]ListConversionsRow, error)
 	ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error)
 	// Reconciliation reads (docs/design/reconciliation.md). Read-only, apart
 	// from storing each report.
@@ -210,6 +218,7 @@ type Querier interface {
 	// Serialises revocations for one contractor, so two concurrent revokes
 	// cannot each see the other key as "still active" and remove both.
 	LockContractorAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]LockContractorAPIKeysRow, error)
+	LockConversion(ctx context.Context, arg LockConversionParams) (Conversion, error)
 	// Serialises role changes in one organisation, so two concurrent changes
 	// cannot each leave the other as the last admin and remove both.
 	LockOrgMembers(ctx context.Context, orgID uuid.UUID) ([]LockOrgMembersRow, error)
@@ -218,6 +227,7 @@ type Querier interface {
 	// database clock, so lease checks never depend on the caller's clock.
 	LockSignerNonce(ctx context.Context, arg LockSignerNonceParams) (LockSignerNonceRow, error)
 	MarkCheckoutPaid(ctx context.Context, arg MarkCheckoutPaidParams) error
+	MarkConversionAccepted(ctx context.Context, arg MarkConversionAcceptedParams) error
 	MarkPaymentConfirmed(ctx context.Context, id uuid.UUID) error
 	MarkPaymentFinal(ctx context.Context, id uuid.UUID) error
 	MarkPaymentReorged(ctx context.Context, id uuid.UUID) (int64, error)

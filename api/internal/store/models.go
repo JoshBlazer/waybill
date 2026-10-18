@@ -136,6 +136,17 @@ type ContractorWallet struct {
 	PayoutsAllowedFrom time.Time
 }
 
+type Conversion struct {
+	ID           uuid.UUID
+	ContractorID uuid.UUID
+	UsdcAmount   money.Amount
+	NairaAmount  money.Amount
+	RateQuoteID  uuid.UUID
+	State        string
+	AcceptedAt   *time.Time
+	CreatedAt    time.Time
+}
+
 type DepositAddress struct {
 	Network   string
 	Address   string
@@ -288,7 +299,7 @@ type Payment struct {
 
 type Payout struct {
 	ID           uuid.UUID
-	InvoiceID    uuid.UUID
+	InvoiceID    *uuid.UUID
 	ContractorID uuid.UUID
 	State        string
 	SourceAsset  string
@@ -300,12 +311,13 @@ type Payout struct {
 	Failure      *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	ConversionID *uuid.UUID
 }
 
 type PayoutEvent struct {
 	ID        int64
 	PayoutID  uuid.UUID
-	InvoiceID uuid.UUID
+	InvoiceID *uuid.UUID
 	Type      string
 	FromState string
 	ToState   string

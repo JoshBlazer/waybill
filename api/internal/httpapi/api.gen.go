@@ -79,6 +79,27 @@ func (e BatchState) Valid() bool {
 	}
 }
 
+// Defines values for ConversionState.
+const (
+	ConversionStateAccepted ConversionState = "accepted"
+	ConversionStateExpired  ConversionState = "expired"
+	ConversionStateQuoted   ConversionState = "quoted"
+)
+
+// Valid indicates whether the value is a known member of the ConversionState enum.
+func (e ConversionState) Valid() bool {
+	switch e {
+	case ConversionStateAccepted:
+		return true
+	case ConversionStateExpired:
+		return true
+	case ConversionStateQuoted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateInvoiceRequestAsset.
 const (
 	USDC CreateInvoiceRequestAsset = "USDC"
@@ -426,6 +447,20 @@ type Approval struct {
 // ApprovalDecision defines model for Approval.Decision.
 type ApprovalDecision string
 
+// Balance defines model for Balance.
+type Balance struct {
+	Conversions []Conversion `json:"conversions"`
+
+	// NairaOnItsWay Converted, not yet sent to the bank.
+	NairaOnItsWay Amount `json:"nairaOnItsWay"`
+
+	// UsdcAvailable An exact amount. `minor` / 10^`scale` is the value in major units.
+	UsdcAvailable Amount `json:"usdcAvailable"`
+
+	// UsdcPending Received, not yet final.
+	UsdcPending Amount `json:"usdcPending"`
+}
+
 // Bank defines model for Bank.
 type Bank struct {
 	// Code Example: 058
@@ -541,6 +576,44 @@ type Checkout struct {
 	AuthorizationUrl string    `json:"authorizationUrl"`
 	ExpiresAt        time.Time `json:"expiresAt"`
 	Reference        string    `json:"reference"`
+}
+
+// Conversion defines model for Conversion.
+type Conversion struct {
+	AcceptedAt *time.Time `json:"acceptedAt,omitempty"`
+
+	// Amount An exact amount. `minor` / 10^`scale` is the value in major units.
+	Amount    Amount             `json:"amount"`
+	CreatedAt time.Time          `json:"createdAt"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Naira An exact amount. `minor` / 10^`scale` is the value in major units.
+	Naira  Amount            `json:"naira"`
+	Payout *ConversionPayout `json:"payout,omitempty"`
+
+	// Rate Naira per 1 USDC.
+	Rate  Amount          `json:"rate"`
+	State ConversionState `json:"state"`
+}
+
+// ConversionState defines model for Conversion.State.
+type ConversionState string
+
+// ConversionPayout defines model for ConversionPayout.
+type ConversionPayout struct {
+	Reference string `json:"reference"`
+
+	// State The payout's state, as on an invoice payout.
+	State string `json:"state"`
+}
+
+// ConversionRequest defines model for ConversionRequest.
+type ConversionRequest struct {
+	// Amount USDC to convert, as a decimal string, at least "1".
+	//
+	// Example: 40.50
+	Amount string `json:"amount"`
 }
 
 // CreateApiKeyRequest defines model for CreateApiKeyRequest.
@@ -1061,6 +1134,12 @@ type AcceptShortfallParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// AcceptConversionParams defines parameters for AcceptConversion.
+type AcceptConversionParams struct {
+	// IdempotencyKey Unique per logical request, 1–255 printable ASCII characters.
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // PaystackWebhookJSONBody defines parameters for PaystackWebhook.
 type PaystackWebhookJSONBody map[string]interface{}
 
@@ -1098,6 +1177,9 @@ type CreateInvoiceJSONRequestBody = CreateInvoiceRequest
 
 // SetBankAccountJSONRequestBody defines body for SetBankAccount for application/json ContentType.
 type SetBankAccountJSONRequestBody = SetBankAccountRequest
+
+// QuoteConversionJSONRequestBody defines body for QuoteConversion for application/json ContentType.
+type QuoteConversionJSONRequestBody = ConversionRequest
 
 // SetPayoutWalletJSONRequestBody defines body for SetPayoutWallet for application/json ContentType.
 type SetPayoutWalletJSONRequestBody = SetPayoutWalletRequest
@@ -1182,12 +1264,24 @@ type ServerInterface interface {
 	// GetInvoiceReceiptPdf The receipt for a settled invoice, as a PDF.
 	// (GET /v1/invoices/{id}/receipt.pdf)
 	GetInvoiceReceiptPdf(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// GetBalance The contractor's balances and recent conversions.
+	// (GET /v1/me/balance)
+	GetBalance(w http.ResponseWriter, r *http.Request)
 	// GetBankAccount The contractor's payout bank account.
 	// (GET /v1/me/bank-account)
 	GetBankAccount(w http.ResponseWriter, r *http.Request)
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(w http.ResponseWriter, r *http.Request)
+	// QuoteConversion Quote a conversion of USDC balance to naira.
+	// (POST /v1/me/conversions)
+	QuoteConversion(w http.ResponseWriter, r *http.Request)
+	// GetConversion One conversion and its payout.
+	// (GET /v1/me/conversions/{id})
+	GetConversion(w http.ResponseWriter, r *http.Request, id ResourceId)
+	// AcceptConversion Accept a quote before it expires; the naira is sent to the bank.
+	// (POST /v1/me/conversions/{id}/accept)
+	AcceptConversion(w http.ResponseWriter, r *http.Request, id ResourceId, params AcceptConversionParams)
 	// ListPayoutWallets The contractor's payout wallets, one per network.
 	// (GET /v1/me/payout-wallet)
 	ListPayoutWallets(w http.ResponseWriter, r *http.Request)
@@ -1853,6 +1947,20 @@ func (siw *ServerInterfaceWrapper) GetInvoiceReceiptPdf(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetBalance operation middleware
+func (siw *ServerInterfaceWrapper) GetBalance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBalance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetBankAccount operation middleware
 func (siw *ServerInterfaceWrapper) GetBankAccount(w http.ResponseWriter, r *http.Request) {
 
@@ -1872,6 +1980,100 @@ func (siw *ServerInterfaceWrapper) SetBankAccount(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// QuoteConversion operation middleware
+func (siw *ServerInterfaceWrapper) QuoteConversion(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QuoteConversion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetConversion operation middleware
+func (siw *ServerInterfaceWrapper) GetConversion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetConversion(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptConversion operation middleware
+func (siw *ServerInterfaceWrapper) AcceptConversion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AcceptConversionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptConversion(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2478,6 +2680,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches/{id}/receipt", wrapper.GetBatchReceipt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/batches/{id}/receipt.pdf", wrapper.GetBatchReceiptPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/exports/ledger.csv", wrapper.ExportLedger)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/me/balance", wrapper.GetBalance)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/me/conversions", wrapper.QuoteConversion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/me/conversions/{id}", wrapper.GetConversion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/me/conversions/{id}/accept", wrapper.AcceptConversion)
 
 	return m
 }
@@ -3890,6 +4096,43 @@ func (response GetInvoiceReceiptPdf409ApplicationProblemPlusJSONResponse) VisitG
 	return err
 }
 
+type GetBalanceRequestObject struct {
+}
+
+type GetBalanceResponseObject interface {
+	VisitGetBalanceResponse(w http.ResponseWriter) error
+}
+
+type GetBalance200JSONResponse Balance
+
+func (response GetBalance200JSONResponse) VisitGetBalanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBalance401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetBalance401ApplicationProblemPlusJSONResponse) VisitGetBalanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetBankAccountRequestObject struct {
 }
 
@@ -4017,6 +4260,205 @@ func (response SetBankAccount503ApplicationProblemPlusJSONResponse) VisitSetBank
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuoteConversionRequestObject struct {
+	Body *QuoteConversionJSONRequestBody
+}
+
+type QuoteConversionResponseObject interface {
+	VisitQuoteConversionResponse(w http.ResponseWriter) error
+}
+
+type QuoteConversion201JSONResponse Conversion
+
+func (response QuoteConversion201JSONResponse) VisitQuoteConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuoteConversion401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response QuoteConversion401ApplicationProblemPlusJSONResponse) VisitQuoteConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuoteConversion422ApplicationProblemPlusJSONResponse Problem
+
+func (response QuoteConversion422ApplicationProblemPlusJSONResponse) VisitQuoteConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QuoteConversion503ApplicationProblemPlusJSONResponse Problem
+
+func (response QuoteConversion503ApplicationProblemPlusJSONResponse) VisitQuoteConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversionRequestObject struct {
+	Id ResourceId `json:"id"`
+}
+
+type GetConversionResponseObject interface {
+	VisitGetConversionResponse(w http.ResponseWriter) error
+}
+
+type GetConversion200JSONResponse Conversion
+
+func (response GetConversion200JSONResponse) VisitGetConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversion401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetConversion401ApplicationProblemPlusJSONResponse) VisitGetConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConversion404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetConversion404ApplicationProblemPlusJSONResponse) VisitGetConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptConversionRequestObject struct {
+	Id     ResourceId `json:"id"`
+	Params AcceptConversionParams
+}
+
+type AcceptConversionResponseObject interface {
+	VisitAcceptConversionResponse(w http.ResponseWriter) error
+}
+
+type AcceptConversion200JSONResponse Conversion
+
+func (response AcceptConversion200JSONResponse) VisitAcceptConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptConversion401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response AcceptConversion401ApplicationProblemPlusJSONResponse) VisitAcceptConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptConversion404ApplicationProblemPlusJSONResponse Problem
+
+func (response AcceptConversion404ApplicationProblemPlusJSONResponse) VisitAcceptConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptConversion409ApplicationProblemPlusJSONResponse Problem
+
+func (response AcceptConversion409ApplicationProblemPlusJSONResponse) VisitAcceptConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptConversion422ApplicationProblemPlusJSONResponse Problem
+
+func (response AcceptConversion422ApplicationProblemPlusJSONResponse) VisitAcceptConversionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4987,12 +5429,24 @@ type StrictServerInterface interface {
 	// GetInvoiceReceiptPdf The receipt for a settled invoice, as a PDF.
 	// (GET /v1/invoices/{id}/receipt.pdf)
 	GetInvoiceReceiptPdf(ctx context.Context, request GetInvoiceReceiptPdfRequestObject) (GetInvoiceReceiptPdfResponseObject, error)
+	// GetBalance The contractor's balances and recent conversions.
+	// (GET /v1/me/balance)
+	GetBalance(ctx context.Context, request GetBalanceRequestObject) (GetBalanceResponseObject, error)
 	// GetBankAccount The contractor's payout bank account.
 	// (GET /v1/me/bank-account)
 	GetBankAccount(ctx context.Context, request GetBankAccountRequestObject) (GetBankAccountResponseObject, error)
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(ctx context.Context, request SetBankAccountRequestObject) (SetBankAccountResponseObject, error)
+	// QuoteConversion Quote a conversion of USDC balance to naira.
+	// (POST /v1/me/conversions)
+	QuoteConversion(ctx context.Context, request QuoteConversionRequestObject) (QuoteConversionResponseObject, error)
+	// GetConversion One conversion and its payout.
+	// (GET /v1/me/conversions/{id})
+	GetConversion(ctx context.Context, request GetConversionRequestObject) (GetConversionResponseObject, error)
+	// AcceptConversion Accept a quote before it expires; the naira is sent to the bank.
+	// (POST /v1/me/conversions/{id}/accept)
+	AcceptConversion(ctx context.Context, request AcceptConversionRequestObject) (AcceptConversionResponseObject, error)
 	// ListPayoutWallets The contractor's payout wallets, one per network.
 	// (GET /v1/me/payout-wallet)
 	ListPayoutWallets(ctx context.Context, request ListPayoutWalletsRequestObject) (ListPayoutWalletsResponseObject, error)
@@ -5645,6 +6099,30 @@ func (sh *strictHandler) GetInvoiceReceiptPdf(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// GetBalance operation middleware
+func (sh *strictHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
+	var request GetBalanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBalance(ctx, request.(GetBalanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBalance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBalanceResponseObject); ok {
+		if err := validResponse.VisitGetBalanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetBankAccount operation middleware
 func (sh *strictHandler) GetBankAccount(w http.ResponseWriter, r *http.Request) {
 	var request GetBankAccountRequestObject
@@ -5693,6 +6171,90 @@ func (sh *strictHandler) SetBankAccount(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetBankAccountResponseObject); ok {
 		if err := validResponse.VisitSetBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QuoteConversion operation middleware
+func (sh *strictHandler) QuoteConversion(w http.ResponseWriter, r *http.Request) {
+	var request QuoteConversionRequestObject
+
+	var body QuoteConversionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QuoteConversion(ctx, request.(QuoteConversionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QuoteConversion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QuoteConversionResponseObject); ok {
+		if err := validResponse.VisitQuoteConversionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetConversion operation middleware
+func (sh *strictHandler) GetConversion(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request GetConversionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetConversion(ctx, request.(GetConversionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetConversion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetConversionResponseObject); ok {
+		if err := validResponse.VisitGetConversionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptConversion operation middleware
+func (sh *strictHandler) AcceptConversion(w http.ResponseWriter, r *http.Request, id ResourceId, params AcceptConversionParams) {
+	var request AcceptConversionRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptConversion(ctx, request.(AcceptConversionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptConversion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptConversionResponseObject); ok {
+		if err := validResponse.VisitAcceptConversionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

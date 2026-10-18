@@ -35,6 +35,11 @@ export default function BankAccountPage() {
         <ExportForm action="/account/export" />
       </Suspense>
       <p>
+        <Link href="/account/balance" className="underline">
+          Your balance: convert to naira
+        </Link>
+      </p>
+      <p>
         <Link href="/invoices/new" className="underline">
           New invoice
         </Link>

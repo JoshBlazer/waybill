@@ -192,6 +192,15 @@ func (s *Service) lookupRefs(ctx context.Context, rows []store.ListExportPosting
 			out["checkout:"+r.ID.String()] = refInfo{waybill: r.TrackingCode, provider: r.Reference}
 		}
 	}
+	if len(ids["conversion"]) > 0 {
+		rs, err := q.ConversionRefs(ctx, ids["conversion"])
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rs {
+			out["conversion:"+r.ID.String()] = refInfo{waybill: "conversion", provider: code(r.Reference, "")}
+		}
+	}
 	if len(ids["batch"]) > 0 {
 		rs, err := q.BatchRefs(ctx, ids["batch"])
 		if err != nil {
