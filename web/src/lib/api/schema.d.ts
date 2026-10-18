@@ -956,10 +956,15 @@ export interface components {
        * @example 125.50
        */
       amount: string;
-      /** @enum {string} */
-      asset: "USDC";
       /**
-       * @description `hold` keeps the stablecoin in the contractor's balance. `naira`
+       * @description `BTC` invoices are paid on Bitcoin test networks to a fresh address
+       *     derived from an extended public key, and are held in BTC: payout
+       *     must be `hold` (ADR-045).
+       * @enum {string}
+       */
+      asset: "USDC" | "BTC";
+      /**
+       * @description `hold` keeps the stablecoin (or BTC) in the contractor's balance. `naira`
        *     locks a rate now (see `Quote`) and sends naira to the verified bank
        *     account once the invoice settles. `naira` needs a verified bank
        *     account and an available rate: without either it is a 422 or a
@@ -981,10 +986,18 @@ export interface components {
     DepositAddress: {
       /** @example evm:84532 */
       network: string;
-      /** @description EIP-55 checksummed. Unique to this invoice and network. */
+      /**
+       * @description Unique to this invoice and network. EVM: EIP-55 checksummed `0x…`.
+       *     Bitcoin: a bech32 P2WPKH address (`bcrt1…` on regtest, `tb1…` on signet).
+       */
       address: string;
-      /** @description The only token contract accepted at this address. */
-      token: string;
+      /** @description EVM only. The only token contract accepted at this address. */
+      token?: string;
+      /**
+       * @description Bitcoin only. A BIP21 `bitcoin:` URI with the invoice amount, for
+       *     wallets and QR codes.
+       */
+      uri?: string;
     };
     Invoice: {
       /** Format: uuid */

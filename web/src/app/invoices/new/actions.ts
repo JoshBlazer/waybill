@@ -13,6 +13,7 @@ export type FormValues = {
   description: string;
   amount: string;
   payout: "hold" | "naira";
+  asset: "USDC" | "BTC";
 };
 
 // Demo flow: the Next.js server creates invoices as the seeded demo
@@ -26,6 +27,7 @@ export async function createInvoiceAction(
     description: String(form.get("description") ?? ""),
     amount: String(form.get("amount") ?? "").trim(),
     payout: form.get("payout") === "naira" ? "naira" : "hold",
+    asset: form.get("asset") === "BTC" ? "BTC" : "USDC",
   };
   const key = process.env.WAYBILL_DEV_CONTRACTOR_KEY;
   if (!key) {
@@ -39,7 +41,7 @@ export async function createInvoiceAction(
   const result = await createInvoice(apiBaseUrl(), key, idempotencyKey, {
     description: values.description,
     amount: values.amount,
-    asset: "USDC",
+    asset: values.asset,
     payout: values.payout,
   });
   switch (result.kind) {

@@ -98,7 +98,12 @@ func guard(ctx context.Context, log *slog.Logger) (config.Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	if err := safety.Check(ctx, cfg.Safety(), safety.EVMProber{}); err != nil {
+	if err := safety.Check(ctx, cfg.Safety(), liveProber{}); err != nil {
+		return cfg, fmt.Errorf("test-money guard refused to start: %w", err)
+	}
+	// Every configured Bitcoin network needs a usable extended public key,
+	// and never a private one (I15).
+	if _, err := btcNetworks(cfg); err != nil {
 		return cfg, fmt.Errorf("test-money guard refused to start: %w", err)
 	}
 	log.Info("test-money guard passed", "networks", cfg.Networks())
@@ -132,6 +137,10 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	bnets, err := btcNetworks(cfg)
+	if err != nil {
+		return err
+	}
 	broker := httpapi.NewBroker(pool, log)
 	go broker.Run(ctx)
 
@@ -141,7 +150,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 		Handler: otelhttp.NewHandler(httpapi.NewHandler(&httpapi.Server{
 			DB:       store.New(pool),
 			Pool:     pool,
-			Invoices: &invoice.Service{Deployments: deps, Now: time.Now, Quoter: nr.quoter},
+			Invoices: &invoice.Service{Deployments: deps, Now: time.Now, Quoter: nr.quoter, BTC: btcDerivers(bnets)},
 			Banks:    nr.banks,
 			Resolver: nr.resolver,
 			Paystack: nr.paystack,

@@ -116,14 +116,16 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Start the stack
+      - name: Start the stack, with Bitcoin regtest
         # The fixed fake naira rate keeps end-to-end runs deterministic and
-        # independent of ExchangeRate-API.
+        # independent of ExchangeRate-API. Bitcoin regtest is on so the
+        # stage 5 exit check (the e2e path on Bitcoin) runs on every change.
         env:
           WAYBILL_RATES: fake
-        run: make up
-      - name: API health
-        run: curl --fail --silent --show-error http://localhost:8080/v1/health
+        run: make up-bitcoin
+      - name: API health, with Bitcoin watched
+        # bitcoin.spec.ts skips itself without btc:regtest; fail here instead.
+        run: curl --fail --silent --show-error http://localhost:8080/v1/health | grep -q '"btc:regtest"'
       - name: Web reaches API
         # The status block streams in only after the web server fetched /v1/health.
         run: curl --fail --silent --show-error http://localhost:3000/ | grep -q "The Waybill service is running."

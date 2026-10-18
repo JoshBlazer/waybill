@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type { BankAccount } from "@/lib/api/client";
 import { formatAmount, formatAmountWithAsset } from "@/lib/money";
 import { formatLagosDate } from "../../account/bank/dates";
@@ -14,9 +14,12 @@ export type PayoutAccount = BankAccount | null | "unknown";
 export function CreateInvoiceForm({
   idempotencyKey,
   account,
+  bitcoin = false,
 }: {
   idempotencyKey: string;
   account: PayoutAccount;
+  /** The server watches a Bitcoin test network, so BTC invoices work. */
+  bitcoin?: boolean;
 }) {
   const [state, action, pending] = useActionState<CreateState, FormData>(
     createInvoiceAction,
@@ -30,6 +33,7 @@ export function CreateInvoiceForm({
   const errorRef = useRef<HTMLParagraphElement>(null);
 
   const values = state.status === "error" ? state.values : undefined;
+  const [asset, setAsset] = useState<"USDC" | "BTC">(values?.asset ?? "USDC");
 
   useEffect(() => {
     if (state.status === "created") resultRef.current?.focus();
@@ -116,19 +120,47 @@ export function CreateInvoiceForm({
           placeholder=""
         />
       </div>
+      {bitcoin ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="font-semibold">Paid in</legend>
+          {(["USDC", "BTC"] as const).map((a) => (
+            <label key={a} className="flex min-h-11 items-center gap-3">
+              <input
+                type="radio"
+                name="asset"
+                value={a}
+                checked={asset === a}
+                onChange={() => setAsset(a)}
+                className="size-5"
+              />
+              {a === "USDC"
+                ? "USDC on a test EVM network"
+                : "Bitcoin on a test network (held in BTC)"}
+            </label>
+          ))}
+        </fieldset>
+      ) : (
+        <input type="hidden" name="asset" value="USDC" />
+      )}
       <div className="flex flex-col gap-1">
         <label htmlFor="amount" className="font-semibold">
-          Amount in USDC
+          Amount in {asset}
         </label>
         <p id="amount-hint" className="text-sm text-ink-muted">
-          For example 125.50. Up to 6 decimal places.
+          {asset === "BTC"
+            ? "For example 0.015. Up to 8 decimal places."
+            : "For example 125.50. Up to 6 decimal places."}
         </p>
         <input
           id="amount"
           name="amount"
           required
           inputMode="decimal"
-          pattern="^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$"
+          pattern={
+            asset === "BTC"
+              ? "^(0|[1-9][0-9]*)(\\.[0-9]{1,8})?$"
+              : "^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?$"
+          }
           aria-describedby="amount-hint"
           defaultValue={values?.amount}
           className="min-h-11 border border-ink bg-paper-raised px-3 font-mono"
@@ -144,14 +176,14 @@ export function CreateInvoiceForm({
             defaultChecked={values?.payout !== "naira"}
             className="size-5"
           />
-          Keep the USDC in my Waybill balance
+          Keep the {asset} in my Waybill balance
         </label>
         <label className="flex min-h-11 items-center gap-3">
           <input
             type="radio"
             name="payout"
             value="naira"
-            disabled={account === null}
+            disabled={account === null || asset === "BTC"}
             defaultChecked={values?.payout === "naira"}
             aria-describedby="naira-hint"
             className="size-5"

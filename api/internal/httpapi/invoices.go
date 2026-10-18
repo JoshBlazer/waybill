@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -88,8 +89,12 @@ func (s *Server) CreateInvoice(ctx context.Context, req CreateInvoiceRequestObje
 
 	switch {
 	case errors.Is(err, invoice.ErrInvalidAmount), errors.Is(err, invoice.ErrInvalidDescription),
-		errors.Is(err, invoice.ErrInvalidPayout), errors.Is(err, invoice.ErrUnsupportedAsset):
+		errors.Is(err, invoice.ErrInvalidPayout), errors.Is(err, invoice.ErrUnsupportedAsset),
+		errors.Is(err, invoice.ErrBTCHoldOnly):
 		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "validation", "The invoice is not valid.", err.Error())), nil
+	case errors.Is(err, invoice.ErrNoNetworks):
+		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "no-network",
+			"No network for this asset is configured on this server.", "BTC invoices need a Bitcoin network (ADR-045).")), nil
 	case errors.Is(err, invoice.ErrNoBankAccount):
 		return CreateInvoice422ApplicationProblemPlusJSONResponse(problem(422, "no-bank-account",
 			"Add a verified bank account before asking for naira.", "PUT /v1/me/bank-account, or choose \"hold\".")), nil
@@ -235,7 +240,16 @@ func amountJSON(inv invoice.Invoice) Amount {
 func depositJSON(inv invoice.Invoice) []DepositAddress {
 	out := make([]DepositAddress, 0, len(inv.DepositAddresses))
 	for _, d := range inv.DepositAddresses {
-		out = append(out, DepositAddress{Network: string(d.Network), Address: d.Address, Token: d.Token})
+		a := DepositAddress{Network: string(d.Network), Address: d.Address}
+		if d.Token != "" {
+			tok := d.Token
+			a.Token = &tok
+		} else {
+			// Bitcoin: BIP21, with the amount in BTC.
+			uri := "bitcoin:" + d.Address + "?amount=" + strings.TrimRight(strings.TrimRight(inv.Amount.Format(inv.Asset.Scale), "0"), ".")
+			a.Uri = &uri
+		}
+		out = append(out, a)
 	}
 	return out
 }

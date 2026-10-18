@@ -75,6 +75,45 @@ type BatchLine struct {
 	TrackingCode  string
 }
 
+type BtcAddress struct {
+	Address         string
+	Network         string
+	InvoiceID       uuid.UUID
+	DerivationIndex int64
+}
+
+type BtcAddressCounter struct {
+	Network   string
+	NextIndex int64
+}
+
+type BtcBlock struct {
+	Network string
+	Height  int64
+	Hash    string
+}
+
+type BtcCursor struct {
+	Network    string
+	NextHeight int64
+}
+
+type BtcPayment struct {
+	ID          uuid.UUID
+	Network     string
+	Txid        string
+	Vout        int32
+	BlockHeight int64
+	BlockHash   string
+	Address     string
+	InvoiceID   uuid.UUID
+	Amount      money.Amount
+	State       string
+	DetectedAt  time.Time
+	ConfirmedAt *time.Time
+	FinalAt     *time.Time
+}
+
 type ChainBlock struct {
 	Network string
 	Height  int64
