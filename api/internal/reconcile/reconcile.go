@@ -26,6 +26,10 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -42,6 +46,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 	"github.com/JoshBlazer/waybill/api/internal/sweep"
+	"github.com/JoshBlazer/waybill/api/internal/telemetry"
 )
 
 // Chain is the part of an EVM client reconciliation reads.
@@ -147,7 +152,37 @@ func (r *Reconciler) now() time.Time {
 }
 
 // Run checks everything once and stores the report.
-func (r *Reconciler) Run(ctx context.Context, opts Options) (Report, error) {
+func (r *Reconciler) Run(ctx context.Context, opts Options) (rep Report, err error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "reconcile")
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "reconciliation failed")
+		} else {
+			reconDifferences.Record(ctx, int64(rep.Differences))
+			unsettled := int64(0)
+			for _, c := range rep.Checks {
+				if c.Status == Unsettled {
+					unsettled++
+				}
+			}
+			reconUnsettled.Record(ctx, unsettled)
+			span.SetAttributes(attribute.Int("waybill.differences", rep.Differences))
+		}
+		span.End()
+	}()
+	return r.run(ctx, opts)
+}
+
+// Reconciliation metrics (ADR-045). Differences is the one to alert on.
+var (
+	reconDifferences, _ = telemetry.Meter().Int64Gauge("waybill.reconcile.differences",
+		metric.WithDescription("Differences found by the last reconciliation run. Anything above 0 needs a person."))
+	reconUnsettled, _ = telemetry.Meter().Int64Gauge("waybill.reconcile.unsettled",
+		metric.WithDescription("Balance checks off once in the last run; decided on the next."))
+)
+
+func (r *Reconciler) run(ctx context.Context, opts Options) (Report, error) {
 	q := store.New(r.Pool)
 	rep := Report{ID: uuid.New(), StartedAt: r.now(), AsOf: map[safety.Network]uint64{}}
 	since, err := q.LastCleanReconciliationStart(ctx)

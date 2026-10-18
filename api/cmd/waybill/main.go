@@ -21,6 +21,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/JoshBlazer/waybill/api/internal/config"
 	"github.com/JoshBlazer/waybill/api/internal/conversion"
 	"github.com/JoshBlazer/waybill/api/internal/db"
@@ -47,6 +49,16 @@ func main() {
 
 	cmd := os.Args[1]
 	log = log.With("cmd", cmd)
+	shutdown := func(context.Context) error { return nil }
+	switch cmd {
+	case "api", "worker", "watcher", "reconcile":
+		s, err := startTelemetry(ctx, cmd)
+		if err != nil {
+			log.Error("exiting: telemetry", "err", err)
+			os.Exit(1)
+		}
+		shutdown = s
+	}
 	var err error
 	switch cmd {
 	case "api":
@@ -67,6 +79,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
+	// Flush spans and metrics before exiting, on success or failure.
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if serr := shutdown(sctx); serr != nil {
+		log.Warn("telemetry: flush failed", "err", serr)
+	}
+	cancel()
 	if err != nil {
 		log.Error("exiting", "err", err)
 		os.Exit(1)
@@ -119,7 +137,8 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewHandler(&httpapi.Server{
+		// otelhttp is a no-op until telemetry is configured (ADR-045).
+		Handler: otelhttp.NewHandler(httpapi.NewHandler(&httpapi.Server{
 			DB:       store.New(pool),
 			Pool:     pool,
 			Invoices: &invoice.Service{Deployments: deps, Now: time.Now, Quoter: nr.quoter},
@@ -141,7 +160,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Version:             cfg.Version,
 			Networks:            cfg.Networks(),
 			Log:                 log,
-		}),
+		}), "waybill-api"),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errc := make(chan error, 1)

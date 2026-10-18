@@ -1,0 +1,10 @@
+# Grafana provisioning for the opt-in observability profile (ADR-045):
+# loads Waybill's dashboard into the grafana/otel-lgtm container.
+apiVersion: 1
+
+providers:
+  - name: "Waybill"
+    type: file
+    options:
+      path: /otel-lgtm/waybill-dashboard.json
+      foldersFromFilesStructure: false

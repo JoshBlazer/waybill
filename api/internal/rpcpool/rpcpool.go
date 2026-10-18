@@ -26,10 +26,17 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/JoshBlazer/waybill/api/internal/telemetry"
 )
 
 // Backend is one endpoint's client. *ethclient.Client satisfies it.
@@ -113,6 +120,25 @@ func New(network string, eps []Endpoint, opts Options) (*Pool, error) {
 		opts.Now = time.Now
 	}
 	p := &Pool{network: network, opts: opts}
+	// Created here, not at package init: an observable must come from the
+	// same meter as its callback, and the real meter provider is installed
+	// only after start-up.
+	m := telemetry.Meter()
+	endpointState, err := m.Int64ObservableGauge("waybill.rpc.endpoint.state",
+		metric.WithDescription("Endpoint health: 2 up, 1 lagging, 0 down."))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		for _, e := range p.Status() {
+			v := map[State]int64{Up: 2, Lagging: 1, Down: 0}[e.State]
+			o.ObserveInt64(endpointState, v, metric.WithAttributes(attribute.String("network", network),
+				attribute.String("endpoint", e.Name), attribute.Bool("current", e.Current)))
+		}
+		return nil
+	}, endpointState); err != nil {
+		return nil, err
+	}
 	now := opts.Now()
 	for _, e := range eps {
 		p.eps = append(p.eps, &endpoint{Endpoint: e, state: Up, healthySince: now.Add(-opts.RecoverAfter)})
@@ -163,12 +189,22 @@ func (p *Pool) markDown(e *endpoint, err error) {
 
 // do runs f on the current endpoint and, after a transport failure, once
 // more on the next one.
-func (p *Pool) do(ctx context.Context, f func(context.Context, Backend) error) error {
+func (p *Pool) do(ctx context.Context, method string, f func(context.Context, Backend) error) (err error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "rpc "+method, trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attribute.String("rpc.method", method), attribute.String("network", p.network)))
+	defer func() {
+		if err != nil && Transient(err) {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "endpoint failed")
+		}
+		span.End()
+	}()
 	var last error
 	for i, e := range p.order() {
 		if i == 2 {
 			break
 		}
+		span.SetAttributes(attribute.String("rpc.endpoint", e.Name))
 		cctx, cancel := context.WithTimeout(ctx, p.opts.CallTimeout)
 		err := f(cctx, e.Client)
 		cancel()
@@ -217,6 +253,8 @@ func (p *Pool) pick() {
 	to := p.eps[p.current].Name
 	p.mu.Unlock()
 	if changed {
+		failovers.Add(context.Background(), 1, metric.WithAttributes(attribute.String("network", p.network),
+			attribute.String("from", from), attribute.String("to", to)))
 		p.opts.Log.Warn("rpc failover", "network", p.network, "from", from, "to", to)
 		if p.opts.OnSwitch != nil {
 			p.opts.OnSwitch(from, to)
@@ -315,49 +353,49 @@ func (p *Pool) Network() string { return p.network }
 
 // BlockNumber returns the head height, failing over as described above.
 func (p *Pool) BlockNumber(ctx context.Context) (n uint64, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { n, e = b.BlockNumber(c); return })
+	err = p.do(ctx, "BlockNumber", func(c context.Context, b Backend) (e error) { n, e = b.BlockNumber(c); return })
 	return
 }
 
 // HeaderByNumber returns a block header, failing over as described above.
 func (p *Pool) HeaderByNumber(ctx context.Context, number *big.Int) (h *types.Header, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { h, e = b.HeaderByNumber(c, number); return })
+	err = p.do(ctx, "HeaderByNumber", func(c context.Context, b Backend) (e error) { h, e = b.HeaderByNumber(c, number); return })
 	return
 }
 
 // FilterLogs returns matching logs, failing over as described above.
 func (p *Pool) FilterLogs(ctx context.Context, q ethereum.FilterQuery) (logs []types.Log, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { logs, e = b.FilterLogs(c, q); return })
+	err = p.do(ctx, "FilterLogs", func(c context.Context, b Backend) (e error) { logs, e = b.FilterLogs(c, q); return })
 	return
 }
 
 // CallContract runs a read-only call, failing over as described above.
 func (p *Pool) CallContract(ctx context.Context, msg ethereum.CallMsg, block *big.Int) (out []byte, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { out, e = b.CallContract(c, msg, block); return })
+	err = p.do(ctx, "CallContract", func(c context.Context, b Backend) (e error) { out, e = b.CallContract(c, msg, block); return })
 	return
 }
 
 // TransactionReceipt returns a receipt, or ethereum.NotFound (an answer, not a failure).
 func (p *Pool) TransactionReceipt(ctx context.Context, hash common.Hash) (r *types.Receipt, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { r, e = b.TransactionReceipt(c, hash); return })
+	err = p.do(ctx, "TransactionReceipt", func(c context.Context, b Backend) (e error) { r, e = b.TransactionReceipt(c, hash); return })
 	return
 }
 
 // SuggestGasTipCap returns the suggested priority fee, failing over as described above.
 func (p *Pool) SuggestGasTipCap(ctx context.Context) (v *big.Int, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { v, e = b.SuggestGasTipCap(c); return })
+	err = p.do(ctx, "SuggestGasTipCap", func(c context.Context, b Backend) (e error) { v, e = b.SuggestGasTipCap(c); return })
 	return
 }
 
 // EstimateGas estimates gas; a revert is an answer and is never retried elsewhere.
 func (p *Pool) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (g uint64, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { g, e = b.EstimateGas(c, msg); return })
+	err = p.do(ctx, "EstimateGas", func(c context.Context, b Backend) (e error) { g, e = b.EstimateGas(c, msg); return })
 	return
 }
 
 // PendingNonceAt returns the pending nonce, failing over as described above.
 func (p *Pool) PendingNonceAt(ctx context.Context, account common.Address) (n uint64, err error) {
-	err = p.do(ctx, func(c context.Context, b Backend) (e error) { n, e = b.PendingNonceAt(c, account); return })
+	err = p.do(ctx, "PendingNonceAt", func(c context.Context, b Backend) (e error) { n, e = b.PendingNonceAt(c, account); return })
 	return
 }
 
@@ -366,7 +404,13 @@ func (p *Pool) PendingNonceAt(ctx context.Context, account common.Address) (n ui
 // and the transaction manager has recorded it before sending (I12), so a
 // second node answering "already known" is handled as before.
 func (p *Pool) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	return p.do(ctx, func(c context.Context, b Backend) error { return b.SendTransaction(c, tx) })
+	return p.do(ctx, "SendTransaction", func(c context.Context, b Backend) error { return b.SendTransaction(c, tx) })
 }
 
 var _ Backend = (*Pool)(nil)
+
+// Pool metrics (ADR-045). Endpoints are named by host only.
+var (
+	failovers, _ = telemetry.Meter().Int64Counter("waybill.rpc.failovers",
+		metric.WithDescription("Times a network's current RPC endpoint changed."))
+)
