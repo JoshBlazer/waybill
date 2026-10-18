@@ -7,6 +7,7 @@
 //	waybill migrate      apply database migrations
 //	waybill seed-dev     install the local demo contractor (Anvil only)
 //	waybill healthcheck  probe the local API (for container health checks)
+//	waybill reconcile    check the ledger against the chains and the provider
 package main
 
 import (
@@ -31,7 +32,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/store"
 )
 
-const usage = `usage: waybill <api|worker|watcher|migrate|seed-dev|healthcheck>`
+const usage = `usage: waybill <api|worker|watcher|migrate|seed-dev|healthcheck|reconcile>`
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -58,6 +59,8 @@ func main() {
 		err = runMigrate(ctx, log)
 	case "healthcheck":
 		err = runHealthcheck(ctx)
+	case "reconcile":
+		err = runReconcile(ctx, log, os.Args[2:])
 	default:
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)

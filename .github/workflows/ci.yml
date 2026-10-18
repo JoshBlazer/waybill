@@ -129,6 +129,8 @@ jobs:
         run: curl --fail --silent --show-error http://localhost:3000/ | grep -q "The Waybill service is running."
       - name: End-to-end (Playwright, mobile profile)
         run: make e2e
+      - name: Reconciliation after the end-to-end runs (zero differences)
+        run: make reconcile
       - name: JavaScript budgets
         if: success() || failure() # report budgets even when an e2e test fails
         run: make budget

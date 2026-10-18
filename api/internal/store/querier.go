@@ -125,28 +125,43 @@ type Querier interface {
 	InsertProviderEvent(ctx context.Context, arg InsertProviderEventParams) (int64, error)
 	// Rate quotes ---------------------------------------------------------------
 	InsertRateQuote(ctx context.Context, arg InsertRateQuoteParams) error
+	InsertReconciliationRun(ctx context.Context, arg InsertReconciliationRunParams) error
 	InsertWebhookDelivery(ctx context.Context, arg InsertWebhookDeliveryParams) error
 	// Events and deliveries ---------------------------------------------------
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) error
 	KillOutbox(ctx context.Context, arg KillOutboxParams) (int64, error)
+	// Record checks start from the last run with no differences; a run that
+	// found one keeps checking everything since the last clean run.
+	LastCleanReconciliationStart(ctx context.Context) (time.Time, error)
 	LatestInvoiceEventID(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	LatestReconciliationRun(ctx context.Context) (ReconciliationRun, error)
 	// Leases up to max ready jobs for owner. A job is ready when it is due, not
 	// finished, and not leased (or its lease expired: the worker crashed).
 	// SKIP LOCKED lets concurrent workers take disjoint jobs without waiting.
 	LeaseOutbox(ctx context.Context, arg LeaseOutboxParams) ([]LeaseOutboxRow, error)
 	ListAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]ListAPIKeysRow, error)
+	// Accounts whose balance has the wrong sign for their rule. The ledger
+	// refuses such postings; this checks that it did.
+	ListAccountsBreakingRule(ctx context.Context) ([]ListAccountsBreakingRuleRow, error)
 	ListActivePayouts(ctx context.Context) ([]Payout, error)
 	ListApprovals(ctx context.Context, batchID uuid.UUID) ([]Approval, error)
 	ListBatchEvents(ctx context.Context, batchID uuid.UUID) ([]BatchEvent, error)
 	ListBatchLines(ctx context.Context, batchID uuid.UUID) ([]ListBatchLinesRow, error)
 	ListBatches(ctx context.Context, orgID uuid.UUID) ([]Batch, error)
+	// Runs whose payout may already be on chain but is not yet booked out of
+	// the vault, with their transaction's state and hash.
+	ListBatchesAwaitingFinality(ctx context.Context, network string) ([]ListBatchesAwaitingFinalityRow, error)
 	ListBatchesInState(ctx context.Context, state string) ([]Batch, error)
 	// Newest first: the walk back to the common ancestor stops at the first match.
 	ListChainBlocksBelow(ctx context.Context, arg ListChainBlocksBelowParams) ([]ListChainBlocksBelowRow, error)
 	ListChainTokens(ctx context.Context, network string) ([]ChainToken, error)
 	ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error)
+	// Reconciliation reads (docs/design/reconciliation.md). Read-only, apart
+	// from storing each report.
+	ListDepositAddressesByNetwork(ctx context.Context, network string) ([]string, error)
 	// Open invoices past their expiry, oldest first.
 	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
+	ListFinalPaymentsSince(ctx context.Context, arg ListFinalPaymentsSinceParams) ([]ListFinalPaymentsSinceRow, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
 	ListMembers(ctx context.Context, orgID uuid.UUID) ([]OrgMember, error)
@@ -154,13 +169,22 @@ type Querier interface {
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
 	ListOrgDepositAddresses(ctx context.Context, orgID uuid.UUID) ([]DepositAddress, error)
 	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
+	ListPaidBatchesSince(ctx context.Context, arg ListPaidBatchesSinceParams) ([]ListPaidBatchesSinceRow, error)
+	ListPaidCheckoutsSince(ctx context.Context, since time.Time) ([]ListPaidCheckoutsSinceRow, error)
+	// Payments the ledger booked (at first sighting) from blocks above the
+	// height the chain was read at.
+	ListPaymentsAbove(ctx context.Context, arg ListPaymentsAboveParams) ([]ListPaymentsAboveRow, error)
 	ListPayoutEvents(ctx context.Context, invoiceID uuid.UUID) ([]PayoutEvent, error)
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
+	// Every hash broadcast for a still-pending transaction of the given
+	// purposes: one of them may already be mined.
+	ListPendingTxAttempts(ctx context.Context, arg ListPendingTxAttemptsParams) ([]ListPendingTxAttemptsRow, error)
 	ListPostingsByEntry(ctx context.Context, entryID int64) ([]Posting, error)
 	// Naira payouts. See docs/design/payout.md.
 	// Settled naira invoices that have no payout yet, with what arrived: the
 	// final on-chain payments, or a paid card checkout.
 	ListSettledNairaWithoutPayout(ctx context.Context) ([]ListSettledNairaWithoutPayoutRow, error)
+	ListSettledPayoutsSince(ctx context.Context, since time.Time) ([]ListSettledPayoutsSinceRow, error)
 	ListSubscribedEndpoints(ctx context.Context, arg ListSubscribedEndpointsParams) ([]uuid.UUID, error)
 	ListUnprocessedProviderEvents(ctx context.Context, arg ListUnprocessedProviderEventsParams) ([]ProviderEvent, error)
 	// Sweeping --------------------------------------------------------------

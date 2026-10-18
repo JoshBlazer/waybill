@@ -157,6 +157,7 @@ func runWorker(ctx context.Context, log *slog.Logger) error {
 	run(func() { po.Run(ctx, 10*time.Second) })
 	run(func() { w.Run(ctx, time.Second) })
 	run(func() { invoice.RunExpiry(ctx, pool, 30*time.Second, log) })
+	run(func() { newReconciler(pool, chains, nr, log).RunEvery(ctx, reconcileInterval) })
 	wg.Wait()
 	return nil
 }
