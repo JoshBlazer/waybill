@@ -93,6 +93,7 @@ make down
 
 make up-observability  # make up plus metrics and traces: Grafana on :53001, dashboard "Waybill"
 make reconcile         # check the ledger against the chain and the provider; fails on a difference
+make live-evm          # the payment path on Ethereum Sepolia, with your throwaway test key (deploys first if needed)
 ```
 
 - API health: <http://localhost:8080/v1/health>
