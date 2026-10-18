@@ -16,6 +16,13 @@ func SaltForInvoice(id uuid.UUID) [32]byte {
 	return crypto.Keccak256Hash(id[:])
 }
 
+// SaltForOrg is the CREATE2 salt of a payer organisation's funding address:
+// keccak256("org:" || id). The prefix keeps it apart from every invoice
+// salt.
+func SaltForOrg(id uuid.UUID) [32]byte {
+	return crypto.Keccak256Hash([]byte("org:"), id[:])
+}
+
 // cloneInitCode is the EIP-1167 minimal-proxy creation code that
 // OpenZeppelin's Clones.cloneDeterministic deploys, with the implementation
 // address spliced in after byte 20.

@@ -30,7 +30,7 @@ const createAPIKey = `-- name: CreateAPIKey :one
 
 
 INSERT INTO api_keys (contractor_id, prefix, secret_sha256, name)
-VALUES ($1, $2, $3, $4)
+VALUES ($1::uuid, $2, $3, $4)
 RETURNING id, name, prefix, created_at, last_used_at, revoked_at
 `
 
@@ -224,7 +224,7 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 
 const listAPIKeys = `-- name: ListAPIKeys :many
 SELECT id, name, prefix, created_at, last_used_at, revoked_at
-FROM api_keys WHERE contractor_id = $1
+FROM api_keys WHERE contractor_id = $1::uuid
 ORDER BY created_at DESC, id
 `
 
@@ -388,7 +388,7 @@ func (q *Queries) ListWebhookEndpoints(ctx context.Context, contractorID uuid.UU
 }
 
 const lockContractorAPIKeys = `-- name: LockContractorAPIKeys :many
-SELECT id, revoked_at FROM api_keys WHERE contractor_id = $1 ORDER BY id FOR UPDATE
+SELECT id, revoked_at FROM api_keys WHERE contractor_id = $1::uuid ORDER BY id FOR UPDATE
 `
 
 type LockContractorAPIKeysRow struct {

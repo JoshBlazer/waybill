@@ -75,20 +75,31 @@ func (q *Queries) DeleteChainBlocksFrom(ctx context.Context, arg DeleteChainBloc
 }
 
 const getActiveAPIKey = `-- name: GetActiveAPIKey :one
-SELECT k.contractor_id, k.secret_sha256
+SELECT k.contractor_id, k.member_id, m.org_id, k.secret_sha256
 FROM api_keys k
+LEFT JOIN org_members m ON m.id = k.member_id
 WHERE k.prefix = $1 AND k.revoked_at IS NULL
+  AND (k.member_id IS NULL OR m.removed_at IS NULL)
 `
 
 type GetActiveAPIKeyRow struct {
-	ContractorID uuid.UUID
+	ContractorID *uuid.UUID
+	MemberID     *uuid.UUID
+	OrgID        *uuid.UUID
 	SecretSha256 []byte
 }
 
+// A key belongs to a contractor or to an organisation member; a removed
+// member's keys stop working.
 func (q *Queries) GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error) {
 	row := q.db.QueryRow(ctx, getActiveAPIKey, prefix)
 	var i GetActiveAPIKeyRow
-	err := row.Scan(&i.ContractorID, &i.SecretSha256)
+	err := row.Scan(
+		&i.ContractorID,
+		&i.MemberID,
+		&i.OrgID,
+		&i.SecretSha256,
+	)
 	return i, err
 }
 
@@ -241,7 +252,7 @@ func (q *Queries) GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (str
 
 const insertAPIKey = `-- name: InsertAPIKey :exec
 INSERT INTO api_keys (contractor_id, prefix, secret_sha256)
-VALUES ($1, $2, $3)
+VALUES ($1::uuid, $2, $3)
 ON CONFLICT (prefix) DO NOTHING
 `
 
@@ -258,7 +269,7 @@ func (q *Queries) InsertAPIKey(ctx context.Context, arg InsertAPIKeyParams) erro
 
 const insertDepositAddress = `-- name: InsertDepositAddress :exec
 INSERT INTO deposit_addresses (network, address, invoice_id, salt)
-VALUES ($1, $2, $3, $4)
+VALUES ($1, $2, $3::uuid, $4)
 `
 
 type InsertDepositAddressParams struct {
@@ -362,11 +373,11 @@ func (q *Queries) InsertInvoiceEvent(ctx context.Context, arg InsertInvoiceEvent
 
 const insertPayment = `-- name: InsertPayment :one
 INSERT INTO payments (network, tx_hash, log_index, block_number, block_hash, token_address,
-                      from_address, to_address, invoice_id, asset_code, amount)
+                      from_address, to_address, invoice_id, org_id, asset_code, amount)
 VALUES ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11)
+        $7, $8, $9, $10, $11, $12)
 ON CONFLICT (network, tx_hash, log_index) WHERE state <> 'reorged' DO NOTHING
-RETURNING id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at
+RETURNING id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at, org_id
 `
 
 type InsertPaymentParams struct {
@@ -378,7 +389,8 @@ type InsertPaymentParams struct {
 	TokenAddress string
 	FromAddress  string
 	ToAddress    string
-	InvoiceID    uuid.UUID
+	InvoiceID    *uuid.UUID
+	OrgID        *uuid.UUID
 	AssetCode    string
 	Amount       money.Amount
 }
@@ -395,6 +407,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (P
 		arg.FromAddress,
 		arg.ToAddress,
 		arg.InvoiceID,
+		arg.OrgID,
 		arg.AssetCode,
 		arg.Amount,
 	)
@@ -417,6 +430,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (P
 		&i.ConfirmedAt,
 		&i.FinalAt,
 		&i.ReorgedAt,
+		&i.OrgID,
 	)
 	return i, err
 }
@@ -492,7 +506,7 @@ func (q *Queries) ListChainTokens(ctx context.Context, network string) ([]ChainT
 }
 
 const listDepositAddresses = `-- name: ListDepositAddresses :many
-SELECT network, address, invoice_id, salt FROM deposit_addresses WHERE invoice_id = $1 ORDER BY network
+SELECT network, address, invoice_id, salt, org_id FROM deposit_addresses WHERE invoice_id = $1::uuid ORDER BY network
 `
 
 func (q *Queries) ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID) ([]DepositAddress, error) {
@@ -509,6 +523,7 @@ func (q *Queries) ListDepositAddresses(ctx context.Context, invoiceID uuid.UUID)
 			&i.Address,
 			&i.InvoiceID,
 			&i.Salt,
+			&i.OrgID,
 		); err != nil {
 			return nil, err
 		}
@@ -583,7 +598,7 @@ func (q *Queries) ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([
 }
 
 const listLivePaymentsByInvoice = `-- name: ListLivePaymentsByInvoice :many
-SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at FROM payments WHERE invoice_id = $1 AND state <> 'reorged' ORDER BY block_number, log_index
+SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at, org_id FROM payments WHERE invoice_id = $1::uuid AND state <> 'reorged' ORDER BY block_number, log_index
 `
 
 func (q *Queries) ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error) {
@@ -613,6 +628,7 @@ func (q *Queries) ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.
 			&i.ConfirmedAt,
 			&i.FinalAt,
 			&i.ReorgedAt,
+			&i.OrgID,
 		); err != nil {
 			return nil, err
 		}
@@ -625,7 +641,7 @@ func (q *Queries) ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.
 }
 
 const listOpenPayments = `-- name: ListOpenPayments :many
-SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at FROM payments WHERE network = $1 AND state IN ('detected', 'confirmed') ORDER BY block_number, log_index
+SELECT id, network, tx_hash, log_index, block_number, block_hash, token_address, from_address, to_address, invoice_id, asset_code, amount, state, detected_at, confirmed_at, final_at, reorged_at, org_id FROM payments WHERE network = $1 AND state IN ('detected', 'confirmed') ORDER BY block_number, log_index
 `
 
 func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payment, error) {
@@ -655,6 +671,7 @@ func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payme
 			&i.ConfirmedAt,
 			&i.FinalAt,
 			&i.ReorgedAt,
+			&i.OrgID,
 		); err != nil {
 			return nil, err
 		}
@@ -668,7 +685,7 @@ func (q *Queries) ListOpenPayments(ctx context.Context, network string) ([]Payme
 
 const listUnsweptFinalPayments = `-- name: ListUnsweptFinalPayments :many
 
-SELECT p.id, p.invoice_id FROM payments p
+SELECT p.id, p.invoice_id, p.org_id FROM payments p
 WHERE p.network = $1 AND p.state = 'final'
   AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.dedupe_key = 'sweep:' || p.id::text)
 ORDER BY p.final_at, p.id
@@ -677,7 +694,8 @@ LIMIT 100
 
 type ListUnsweptFinalPaymentsRow struct {
 	ID        uuid.UUID
-	InvoiceID uuid.UUID
+	InvoiceID *uuid.UUID
+	OrgID     *uuid.UUID
 }
 
 // Sweeping --------------------------------------------------------------
@@ -692,7 +710,7 @@ func (q *Queries) ListUnsweptFinalPayments(ctx context.Context, network string) 
 	var items []ListUnsweptFinalPaymentsRow
 	for rows.Next() {
 		var i ListUnsweptFinalPaymentsRow
-		if err := rows.Scan(&i.ID, &i.InvoiceID); err != nil {
+		if err := rows.Scan(&i.ID, &i.InvoiceID, &i.OrgID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -705,12 +723,13 @@ func (q *Queries) ListUnsweptFinalPayments(ctx context.Context, network string) 
 
 const listWatchedAddresses = `-- name: ListWatchedAddresses :many
 
-SELECT address, invoice_id FROM deposit_addresses WHERE network = $1
+SELECT address, invoice_id, org_id FROM deposit_addresses WHERE network = $1
 `
 
 type ListWatchedAddressesRow struct {
 	Address   string
-	InvoiceID uuid.UUID
+	InvoiceID *uuid.UUID
+	OrgID     *uuid.UUID
 }
 
 // Payments (watcher) --------------------------------------------------------
@@ -725,7 +744,7 @@ func (q *Queries) ListWatchedAddresses(ctx context.Context, network string) ([]L
 	var items []ListWatchedAddressesRow
 	for rows.Next() {
 		var i ListWatchedAddressesRow
-		if err := rows.Scan(&i.Address, &i.InvoiceID); err != nil {
+		if err := rows.Scan(&i.Address, &i.InvoiceID, &i.OrgID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -811,10 +830,30 @@ func (q *Queries) SetChainCursor(ctx context.Context, arg SetChainCursorParams) 
 	return err
 }
 
+const sumOrgPaymentsByState = `-- name: SumOrgPaymentsByState :one
+SELECT coalesce(sum(amount), 0)::minor_units AS total
+FROM payments
+WHERE org_id = $1::uuid
+  AND state = ANY($2::text[])
+`
+
+type SumOrgPaymentsByStateParams struct {
+	OrgID  uuid.UUID
+	States []string
+}
+
+// Total of an organisation funding payments in the given states.
+func (q *Queries) SumOrgPaymentsByState(ctx context.Context, arg SumOrgPaymentsByStateParams) (money.Amount, error) {
+	row := q.db.QueryRow(ctx, sumOrgPaymentsByState, arg.OrgID, arg.States)
+	var total money.Amount
+	err := row.Scan(&total)
+	return total, err
+}
+
 const sumPaymentsByState = `-- name: SumPaymentsByState :one
 SELECT coalesce(sum(amount), 0)::minor_units AS total
 FROM payments
-WHERE invoice_id = $1
+WHERE invoice_id = $1::uuid
   AND state = ANY($2::text[])
 `
 

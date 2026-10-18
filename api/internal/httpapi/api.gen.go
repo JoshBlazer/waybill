@@ -142,6 +142,27 @@ func (e InvoiceState) Valid() bool {
 	}
 }
 
+// Defines values for MemberRole.
+const (
+	Admin    MemberRole = "admin"
+	Approver MemberRole = "approver"
+	Maker    MemberRole = "maker"
+)
+
+// Valid indicates whether the value is a known member of the MemberRole enum.
+func (e MemberRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Approver:
+		return true
+	case Maker:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PayoutState.
 const (
 	PayoutStateCancelled  PayoutState = "cancelled"
@@ -287,6 +308,19 @@ func (e WebhookEventType) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AddMemberRequest defines model for AddMemberRequest.
+type AddMemberRequest struct {
+	Name  string       `json:"name"`
+	Roles []MemberRole `json:"roles"`
+}
+
+// AddedMember defines model for AddedMember.
+type AddedMember struct {
+	// ApiKey The member's API key. Shown once.
+	ApiKey string `json:"apiKey"`
+	Member Member `json:"member"`
 }
 
 // Amount An exact amount. `minor` / 10^`scale` is the value in major units.
@@ -452,6 +486,16 @@ type DepositAddress struct {
 	Token string `json:"token"`
 }
 
+// Funding defines model for Funding.
+type Funding struct {
+	// Available An exact amount. `minor` / 10^`scale` is the value in major units.
+	Available        Amount           `json:"available"`
+	DepositAddresses []DepositAddress `json:"depositAddresses"`
+
+	// Pending An exact amount. `minor` / 10^`scale` is the value in major units.
+	Pending Amount `json:"pending"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Database HealthDatabase `json:"database"`
@@ -504,6 +548,34 @@ type InvoicePayout string
 
 // InvoiceState defines model for InvoiceState.
 type InvoiceState string
+
+// Member defines model for Member.
+type Member struct {
+	CreatedAt time.Time          `json:"createdAt"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	RemovedAt *time.Time         `json:"removedAt,omitempty"`
+	Roles     []MemberRole       `json:"roles"`
+}
+
+// MemberList defines model for MemberList.
+type MemberList struct {
+	Data []Member `json:"data"`
+}
+
+// MemberRole `admin` manages members and the threshold, `maker` builds and sends
+// runs, `approver` approves runs above the threshold. A member may
+// hold several; nobody approves their own run.
+type MemberRole string
+
+// Org defines model for Org.
+type Org struct {
+	// ApprovalThreshold An exact amount. `minor` / 10^`scale` is the value in major units.
+	ApprovalThreshold Amount             `json:"approvalThreshold"`
+	CreatedAt         time.Time          `json:"createdAt"`
+	Id                openapi_types.UUID `json:"id"`
+	Name              string             `json:"name"`
+}
 
 // PaymentLink defines model for PaymentLink.
 type PaymentLink struct {
@@ -631,6 +703,21 @@ type TrackingStepStatus string
 // TrackingStepStep defines model for TrackingStep.Step.
 type TrackingStepStep string
 
+// UpdateMemberRequest defines model for UpdateMemberRequest.
+type UpdateMemberRequest struct {
+	// Removed `true` removes the member. Removal is permanent.
+	Removed *bool         `json:"removed,omitempty"`
+	Roles   *[]MemberRole `json:"roles,omitempty"`
+}
+
+// UpdateOrgRequest defines model for UpdateOrgRequest.
+type UpdateOrgRequest struct {
+	// ApprovalThreshold In USDC, as a decimal string, for example `"500"`.
+	//
+	// Example: 500
+	ApprovalThreshold string `json:"approvalThreshold"`
+}
+
 // WebhookDelivery One attempt to deliver one event.
 type WebhookDelivery struct {
 	Attempt   int       `json:"attempt"`
@@ -756,6 +843,15 @@ type CreateInvoiceJSONRequestBody = CreateInvoiceRequest
 // SetBankAccountJSONRequestBody defines body for SetBankAccount for application/json ContentType.
 type SetBankAccountJSONRequestBody = SetBankAccountRequest
 
+// UpdateOrgJSONRequestBody defines body for UpdateOrg for application/json ContentType.
+type UpdateOrgJSONRequestBody = UpdateOrgRequest
+
+// AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
+type AddMemberJSONRequestBody = AddMemberRequest
+
+// UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
+type UpdateMemberJSONRequestBody = UpdateMemberRequest
+
 // PaystackWebhookJSONRequestBody defines body for PaystackWebhook for application/json ContentType.
 type PaystackWebhookJSONRequestBody PaystackWebhookJSONBody
 
@@ -794,6 +890,24 @@ type ServerInterface interface {
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(w http.ResponseWriter, r *http.Request)
+	// GetOrg The caller's organisation.
+	// (GET /v1/org)
+	GetOrg(w http.ResponseWriter, r *http.Request)
+	// UpdateOrg Change the approval threshold. Admins only.
+	// (PATCH /v1/org)
+	UpdateOrg(w http.ResponseWriter, r *http.Request)
+	// GetFunding Where to send test USDC to fund batch runs, and the balance.
+	// (GET /v1/org/funding)
+	GetFunding(w http.ResponseWriter, r *http.Request)
+	// ListMembers The organisation's members, including removed ones.
+	// (GET /v1/org/members)
+	ListMembers(w http.ResponseWriter, r *http.Request)
+	// AddMember Add a member and create their first API key. Admins only.
+	// (POST /v1/org/members)
+	AddMember(w http.ResponseWriter, r *http.Request)
+	// UpdateMember Change a member's roles, or remove them. Admins only.
+	// (PATCH /v1/org/members/{id})
+	UpdateMember(w http.ResponseWriter, r *http.Request, id ResourceId)
 	// GetPayment What a payer sees when opening a payment link.
 	// (GET /v1/pay/{code})
 	GetPayment(w http.ResponseWriter, r *http.Request, code TrackingCode)
@@ -1089,6 +1203,102 @@ func (siw *ServerInterfaceWrapper) SetBankAccount(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrg operation middleware
+func (siw *ServerInterfaceWrapper) GetOrg(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrg(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrg operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrg(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrg(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFunding operation middleware
+func (siw *ServerInterfaceWrapper) GetFunding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFunding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMembers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddMember operation middleware
+func (siw *ServerInterfaceWrapper) AddMember(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddMember(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ResourceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMember(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1550,6 +1760,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/invoices/{id}/accept-shortfall", wrapper.AcceptShortfall)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/pay/{code}/checkout", wrapper.StartCheckout)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/providers/paystack/webhook", wrapper.PaystackWebhook)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/org", wrapper.GetOrg)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/org", wrapper.UpdateOrg)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/org/members", wrapper.ListMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/org/members", wrapper.AddMember)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/org/members/{id}", wrapper.UpdateMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/org/funding", wrapper.GetFunding)
 
 	return m
 }
@@ -2165,6 +2381,344 @@ func (response SetBankAccount503ApplicationProblemPlusJSONResponse) VisitSetBank
 	return err
 }
 
+type GetOrgRequestObject struct {
+}
+
+type GetOrgResponseObject interface {
+	VisitGetOrgResponse(w http.ResponseWriter) error
+}
+
+type GetOrg200JSONResponse Org
+
+func (response GetOrg200JSONResponse) VisitGetOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrg401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetOrg401ApplicationProblemPlusJSONResponse) VisitGetOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrgRequestObject struct {
+	Body *UpdateOrgJSONRequestBody
+}
+
+type UpdateOrgResponseObject interface {
+	VisitUpdateOrgResponse(w http.ResponseWriter) error
+}
+
+type UpdateOrg200JSONResponse Org
+
+func (response UpdateOrg200JSONResponse) VisitUpdateOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrg400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateOrg400ApplicationProblemPlusJSONResponse) VisitUpdateOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrg401ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateOrg401ApplicationProblemPlusJSONResponse) VisitUpdateOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOrg403ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateOrg403ApplicationProblemPlusJSONResponse) VisitUpdateOrgResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFundingRequestObject struct {
+}
+
+type GetFundingResponseObject interface {
+	VisitGetFundingResponse(w http.ResponseWriter) error
+}
+
+type GetFunding200JSONResponse Funding
+
+func (response GetFunding200JSONResponse) VisitGetFundingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFunding401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetFunding401ApplicationProblemPlusJSONResponse) VisitGetFundingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembersRequestObject struct {
+}
+
+type ListMembersResponseObject interface {
+	VisitListMembersResponse(w http.ResponseWriter) error
+}
+
+type ListMembers200JSONResponse MemberList
+
+func (response ListMembers200JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembers401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListMembers401ApplicationProblemPlusJSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMemberRequestObject struct {
+	Body *AddMemberJSONRequestBody
+}
+
+type AddMemberResponseObject interface {
+	VisitAddMemberResponse(w http.ResponseWriter) error
+}
+
+type AddMember201JSONResponse AddedMember
+
+func (response AddMember201JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response AddMember400ApplicationProblemPlusJSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember401ApplicationProblemPlusJSONResponse Problem
+
+func (response AddMember401ApplicationProblemPlusJSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember403ApplicationProblemPlusJSONResponse Problem
+
+func (response AddMember403ApplicationProblemPlusJSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMemberRequestObject struct {
+	Id   ResourceId `json:"id"`
+	Body *UpdateMemberJSONRequestBody
+}
+
+type UpdateMemberResponseObject interface {
+	VisitUpdateMemberResponse(w http.ResponseWriter) error
+}
+
+type UpdateMember200JSONResponse Member
+
+func (response UpdateMember200JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response UpdateMember400ApplicationProblemPlusJSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember401ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateMember401ApplicationProblemPlusJSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember403ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateMember403ApplicationProblemPlusJSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember404ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateMember404ApplicationProblemPlusJSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember409ApplicationProblemPlusJSONResponse Problem
+
+func (response UpdateMember409ApplicationProblemPlusJSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPaymentRequestObject struct {
 	Code TrackingCode `json:"code"`
 }
@@ -2657,6 +3211,24 @@ type StrictServerInterface interface {
 	// SetBankAccount Set or change the payout bank account.
 	// (PUT /v1/me/bank-account)
 	SetBankAccount(ctx context.Context, request SetBankAccountRequestObject) (SetBankAccountResponseObject, error)
+	// GetOrg The caller's organisation.
+	// (GET /v1/org)
+	GetOrg(ctx context.Context, request GetOrgRequestObject) (GetOrgResponseObject, error)
+	// UpdateOrg Change the approval threshold. Admins only.
+	// (PATCH /v1/org)
+	UpdateOrg(ctx context.Context, request UpdateOrgRequestObject) (UpdateOrgResponseObject, error)
+	// GetFunding Where to send test USDC to fund batch runs, and the balance.
+	// (GET /v1/org/funding)
+	GetFunding(ctx context.Context, request GetFundingRequestObject) (GetFundingResponseObject, error)
+	// ListMembers The organisation's members, including removed ones.
+	// (GET /v1/org/members)
+	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
+	// AddMember Add a member and create their first API key. Admins only.
+	// (POST /v1/org/members)
+	AddMember(ctx context.Context, request AddMemberRequestObject) (AddMemberResponseObject, error)
+	// UpdateMember Change a member's roles, or remove them. Admins only.
+	// (PATCH /v1/org/members/{id})
+	UpdateMember(ctx context.Context, request UpdateMemberRequestObject) (UpdateMemberResponseObject, error)
 	// GetPayment What a payer sees when opening a payment link.
 	// (GET /v1/pay/{code})
 	GetPayment(ctx context.Context, request GetPaymentRequestObject) (GetPaymentResponseObject, error)
@@ -2990,6 +3562,173 @@ func (sh *strictHandler) SetBankAccount(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetBankAccountResponseObject); ok {
 		if err := validResponse.VisitSetBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrg operation middleware
+func (sh *strictHandler) GetOrg(w http.ResponseWriter, r *http.Request) {
+	var request GetOrgRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrg(ctx, request.(GetOrgRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrg")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgResponseObject); ok {
+		if err := validResponse.VisitGetOrgResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateOrg operation middleware
+func (sh *strictHandler) UpdateOrg(w http.ResponseWriter, r *http.Request) {
+	var request UpdateOrgRequestObject
+
+	var body UpdateOrgJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateOrg(ctx, request.(UpdateOrgRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateOrg")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateOrgResponseObject); ok {
+		if err := validResponse.VisitUpdateOrgResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFunding operation middleware
+func (sh *strictHandler) GetFunding(w http.ResponseWriter, r *http.Request) {
+	var request GetFundingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFunding(ctx, request.(GetFundingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFunding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFundingResponseObject); ok {
+		if err := validResponse.VisitGetFundingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMembers operation middleware
+func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
+	var request ListMembersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMembers(ctx, request.(ListMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMembersResponseObject); ok {
+		if err := validResponse.VisitListMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddMember operation middleware
+func (sh *strictHandler) AddMember(w http.ResponseWriter, r *http.Request) {
+	var request AddMemberRequestObject
+
+	var body AddMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddMember(ctx, request.(AddMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddMemberResponseObject); ok {
+		if err := validResponse.VisitAddMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMember operation middleware
+func (sh *strictHandler) UpdateMember(w http.ResponseWriter, r *http.Request, id ResourceId) {
+	var request UpdateMemberRequestObject
+
+	request.Id = id
+
+	var body UpdateMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMember(ctx, request.(UpdateMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMemberResponseObject); ok {
+		if err := validResponse.VisitUpdateMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

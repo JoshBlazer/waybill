@@ -41,10 +41,12 @@ const (
 	Purpose = "sweep"
 )
 
-// Job is the outbox payload for Topic.
+// Job is the outbox payload for Topic. A deposit belongs to an invoice or,
+// for funding, to an organisation.
 type Job struct {
 	Network   safety.Network `json:"network"`
-	InvoiceID uuid.UUID      `json:"invoiceId"`
+	InvoiceID uuid.UUID      `json:"invoiceId,omitzero"`
+	OrgID     uuid.UUID      `json:"orgId,omitzero"`
 	PaymentID uuid.UUID      `json:"paymentId"`
 }
 
@@ -65,7 +67,14 @@ func EnqueueDue(ctx context.Context, pool *pgxpool.Pool, network safety.Network)
 	n := 0
 	for _, r := range rows {
 		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-			added, err := outbox.Enqueue(ctx, tx, Topic, Job{Network: network, InvoiceID: r.InvoiceID, PaymentID: r.ID},
+			job := Job{Network: network, PaymentID: r.ID}
+			switch {
+			case r.InvoiceID != nil:
+				job.InvoiceID = *r.InvoiceID
+			case r.OrgID != nil:
+				job.OrgID = *r.OrgID
+			}
+			added, err := outbox.Enqueue(ctx, tx, Topic, job,
 				outbox.Options{DedupeKey: "sweep:" + r.ID.String()})
 			if added {
 				n++
@@ -90,7 +99,7 @@ type Sweeper struct {
 
 // errOpenPayments: sweeping now could move money whose payment is not
 // confirmed yet. The job retries with backoff.
-var errOpenPayments = errors.New("sweep: invoice has unconfirmed payments; sweeping later")
+var errOpenPayments = errors.New("sweep: the address has unconfirmed payments; sweeping later")
 
 // Handle submits the sweep transaction. It returns once the transaction is
 // recorded and sent; Hook records the outcome when it is mined.
@@ -104,16 +113,26 @@ func (s *Sweeper) Handle(ctx context.Context, j outbox.Job) error {
 	if !ok || !okd {
 		return fmt.Errorf("%w: no signer or deployment for %s", outbox.ErrPermanent, job.Network)
 	}
-	open, err := store.New(s.Pool).SumPaymentsByState(ctx, store.SumPaymentsByStateParams{
-		InvoiceID: job.InvoiceID, States: []string{"detected", "confirmed"},
-	})
+	// The forwarder may also hold money whose payment is not confirmed yet;
+	// sweeping it now would move money the ledger has not counted. Wait.
+	q := store.New(s.Pool)
+	open := []string{"detected", "confirmed"}
+	var salt [32]byte
+	var pending money.Amount
+	var err error
+	if job.OrgID != uuid.Nil {
+		salt = evm.SaltForOrg(job.OrgID)
+		pending, err = q.SumOrgPaymentsByState(ctx, store.SumOrgPaymentsByStateParams{OrgID: job.OrgID, States: open})
+	} else {
+		salt = evm.SaltForInvoice(job.InvoiceID)
+		pending, err = q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: job.InvoiceID, States: open})
+	}
 	if err != nil {
 		return err
 	}
-	if !open.IsZero() {
+	if !pending.IsZero() {
 		return errOpenPayments
 	}
-	salt := evm.SaltForInvoice(job.InvoiceID)
 	data := make([]byte, 0, 68)
 	data = append(data, deployAndSweep...)
 	data = append(data, salt[:]...)

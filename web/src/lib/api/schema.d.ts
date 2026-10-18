@@ -365,6 +365,94 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/org": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's organisation. */
+    get: operations["getOrg"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change the approval threshold. Admins only.
+     * @description Runs whose total is above the threshold wait for an approver who is
+     *     not their creator. Changing it does not affect runs already
+     *     approved.
+     */
+    patch: operations["updateOrg"];
+    trace?: never;
+  };
+  "/v1/org/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The organisation's members, including removed ones. */
+    get: operations["listMembers"];
+    put?: never;
+    /**
+     * Add a member and create their first API key. Admins only.
+     * @description The new member's API key is in this response only; Waybill stores a
+     *     SHA-256 hash of it. Give it to the member over a private channel.
+     */
+    post: operations["addMember"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/org/members/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change a member's roles, or remove them. Admins only.
+     * @description A removed member's keys stop working at once. The organisation's
+     *     last admin cannot be removed or lose the admin role (409).
+     */
+    patch: operations["updateMember"];
+    trace?: never;
+  };
+  "/v1/org/funding": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Where to send test USDC to fund batch runs, and the balance.
+     * @description One deposit address per network, unique to the organisation and
+     *     permanent. Money sent there is `pending` until the payment is final
+     *     on-chain, then `available` for runs.
+     */
+    get: operations["getFunding"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -486,6 +574,60 @@ export interface components {
        * @description When the locked rate, and so this naira amount, expires.
        */
       expiresAt: string;
+    };
+    /**
+     * @description `admin` manages members and the threshold, `maker` builds and sends
+     *     runs, `approver` approves runs above the threshold. A member may
+     *     hold several; nobody approves their own run.
+     * @enum {string}
+     */
+    MemberRole: "admin" | "maker" | "approver";
+    Org: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      approvalThreshold: components["schemas"]["Amount"];
+      /** Format: date-time */
+      createdAt: string;
+    };
+    UpdateOrgRequest: {
+      /**
+       * @description In USDC, as a decimal string, for example `"500"`.
+       * @example 500
+       */
+      approvalThreshold: string;
+    };
+    Member: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      roles: components["schemas"]["MemberRole"][];
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      removedAt?: string | null;
+    };
+    MemberList: {
+      data: components["schemas"]["Member"][];
+    };
+    AddMemberRequest: {
+      name: string;
+      roles: components["schemas"]["MemberRole"][];
+    };
+    AddedMember: {
+      member: components["schemas"]["Member"];
+      /** @description The member's API key. Shown once. */
+      apiKey: string;
+    };
+    UpdateMemberRequest: {
+      roles?: components["schemas"]["MemberRole"][];
+      /** @description `true` removes the member. Removal is permanent. */
+      removed?: boolean;
+    };
+    Funding: {
+      depositAddresses: components["schemas"]["DepositAddress"][];
+      pending: components["schemas"]["Amount"];
+      available: components["schemas"]["Amount"];
     };
     TrackingStep: {
       /** @enum {string} */
@@ -1249,6 +1391,154 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  getOrg: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The organisation. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Org"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  updateOrg: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Org"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+    };
+  };
+  listMembers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The members. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberList"];
+        };
+      };
+      401: components["responses"]["Problem"];
+    };
+  };
+  addMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddMemberRequest"];
+      };
+    };
+    responses: {
+      /** @description Added. `apiKey` is shown once. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AddedMember"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+    };
+  };
+  updateMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["ResourceId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateMemberRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Member"];
+        };
+      };
+      400: components["responses"]["Problem"];
+      401: components["responses"]["Problem"];
+      403: components["responses"]["Problem"];
+      404: components["responses"]["Problem"];
+      409: components["responses"]["Problem"];
+    };
+  };
+  getFunding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Funding addresses and balances. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Funding"];
+        };
       };
       401: components["responses"]["Problem"];
     };
