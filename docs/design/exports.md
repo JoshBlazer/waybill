@@ -24,9 +24,11 @@ Columns:
 - Amounts are decimals in the asset's unit (USDC to 6 places, NGN to 2). Money in and money out are separate columns, so no cell holds a negative number.
 - Times are UTC in ISO 8601. The range is inclusive of `from` and exclusive of `to`, and at most 366 days.
 - **Formula injection:** any cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'`. Descriptions and run references are typed by people.
-- **Whose accounts:**
-  - A contractor gets `liability:contractor:{id}:…`.
-  - A member gets `liability:org:{id}:…` and the in-flight accounts of the org's runs.
+- **Whose accounts:** the caller's *available* balances, one per asset, i.e. the money that is theirs.
+  - A contractor gets `liability:contractor:{id}:USDC:available` and `…:NGN:available`.
+  - A member gets `liability:org:{id}:USDC:available`.
+  - A deposit appears when it becomes final. A run's reservation is money out; if the run fails, its return is money in. (Built this way rather than also listing the in-flight accounts: an accountant sees each run once.)
+- **Auth:** the one export operation accepts either kind of key and exports for whichever it is. It is the only operation that does (`eitherKeyOperations`).
 
 ## 3. PDF — decided: option A (owner, 2026-10-18)
 
@@ -54,9 +56,11 @@ The PDFs are text and ruled lines only: one page for an invoice or a receipt for
 
 ## 5. Web
 
-- Receipt and PDF links appear on the invoice page and the run page.
-- An "Export for your accountant" form, with a date range, appears on `/org` and `/account`.
-- The receipt pages have a print stylesheet whichever PDF option is chosen.
+- A paid run's page links to its PDF receipt.
+- An "Export for your accountant" form, with a date range, appears on `/org` and on the contractor's `/account/bank` page.
+- Downloads go through same-origin routes that add the demo key on the server, so the browser never holds a key.
+- The web app has no contractor invoice page yet, so invoice documents and receipts are reached through the API only.
+- A print stylesheet drops forms and buttons from printed pages.
 
 ## 6. Tests
 

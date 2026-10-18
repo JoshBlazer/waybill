@@ -76,3 +76,15 @@ body {
     linear-gradient(#000 0 0) center / 100% calc(100% - 2 * var(--perf))
       no-repeat;
 }
+
+/* Printing a page (a run, a tracking page) keeps the record and drops the
+   controls. */
+@media print {
+  body {
+    background: #fff;
+  }
+  form,
+  button {
+    display: none !important;
+  }
+}

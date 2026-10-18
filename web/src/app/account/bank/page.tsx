@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { ExportForm } from "@/components/ExportForm";
 import { apiBaseUrl, fetchBankAccount, fetchBanks } from "@/lib/api/client";
 import { BankAccountForm } from "./BankAccountForm";
 
@@ -29,6 +30,9 @@ export default function BankAccountPage() {
         }
       >
         <Loaded />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ExportForm action="/account/export" />
       </Suspense>
       <p>
         <Link href="/invoices/new" className="underline">

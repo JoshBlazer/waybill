@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { apiBaseUrl } from "@/lib/api/client";
 import { getFunding, getOrg, listBatches, listMembers } from "@/lib/api/org";
 import { currentMember } from "@/lib/member";
+import { ExportForm } from "@/components/ExportForm";
 import { formatAmountWithAsset } from "@/lib/money";
 import { CopyButton } from "../pay/[code]/CopyButton";
 import { MemberSwitcher } from "./MemberSwitcher";
@@ -154,6 +155,8 @@ async function Loaded() {
           </ul>
         )}
       </section>
+
+      <ExportForm action="/org/export" />
 
       <section
         aria-labelledby="members-heading"

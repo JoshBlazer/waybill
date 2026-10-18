@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -36,6 +36,8 @@ tags:
     description: A payer organisation, its members and roles, and its funding.
   - name: batches
     description: Paying several contractors' wallets in one transaction, with approval.
+  - name: documents
+    description: Invoices, receipts and the accountant export.
 paths:
   /v1/health:
     get:
@@ -922,6 +924,180 @@ paths:
         "409":
           $ref: "#/components/responses/Problem"
 
+  /v1/invoices/{id}/document.pdf:
+    get:
+      operationId: getInvoiceDocument
+      tags: [documents]
+      summary: The invoice as a PDF.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The invoice.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+
+  /v1/invoices/{id}/receipt:
+    get:
+      operationId: getInvoiceReceipt
+      tags: [documents]
+      summary: What arrived for a settled invoice, and what was sent on.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceReceipt"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/invoices/{id}/receipt.pdf:
+    get:
+      operationId: getInvoiceReceiptPdf
+      tags: [documents]
+      summary: The receipt for a settled invoice, as a PDF.
+      security:
+        - contractorKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The receipt.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/batches/{id}/receipt:
+    get:
+      operationId: getBatchReceipt
+      tags: [documents]
+      summary: The receipt for a paid run.
+      security:
+        - memberKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchReceipt"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/batches/{id}/receipt.pdf:
+    get:
+      operationId: getBatchReceiptPdf
+      tags: [documents]
+      summary: The receipt for a paid run, as a PDF.
+      security:
+        - memberKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: The receipt.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/exports/ledger.csv:
+    get:
+      operationId: exportLedger
+      tags: [documents]
+      summary: The caller's own postings in a date range, as CSV for an accountant.
+      description: |
+        One row per posting on the caller's available balances, oldest
+        first: `date, waybill_reference, description, asset, money_in,
+        money_out, balance, chain_tx, provider_reference`. Amounts are
+        decimals in the asset's unit. A cell that a spreadsheet would run as
+        a formula is prefixed with `'`. A contractor key exports the
+        contractor's balances; a member key, the organisation's.
+      security:
+        - contractorKey: []
+        - memberKey: []
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: First day included (UTC).
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          description: First day not included (UTC). At most 366 days after `from`.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The export.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     contractorKey:
@@ -968,6 +1144,136 @@ components:
             $ref: "#/components/schemas/Problem"
 
   schemas:
+    InvoiceReceipt:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, trackingCode, contractorName, description, amount, received, settledAt, payments]
+      properties:
+        invoiceId:
+          type: string
+          format: uuid
+        trackingCode:
+          type: string
+        contractorName:
+          type: string
+        description:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        received:
+          description: The sum of the final on-chain payments.
+          allOf:
+            - $ref: "#/components/schemas/Amount"
+        settledAt:
+          type: string
+          format: date-time
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceiptPayment"
+        card:
+          $ref: "#/components/schemas/ReceiptCard"
+        payout:
+          $ref: "#/components/schemas/ReceiptPayout"
+
+    ReceiptPayment:
+      type: object
+      additionalProperties: false
+      required: [network, txHash, amount, finalAt]
+      properties:
+        network:
+          type: string
+        txHash:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        finalAt:
+          type: string
+          format: date-time
+
+    ReceiptCard:
+      type: object
+      additionalProperties: false
+      required: [reference, amount, paidAt]
+      properties:
+        reference:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        paidAt:
+          type: string
+          format: date-time
+
+    ReceiptPayout:
+      type: object
+      additionalProperties: false
+      required: [state, naira, reference]
+      properties:
+        state:
+          type: string
+        naira:
+          $ref: "#/components/schemas/Amount"
+        rate:
+          description: Naira per one unit of the invoice's asset.
+          allOf:
+            - $ref: "#/components/schemas/Amount"
+        reference:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+
+    BatchReceipt:
+      type: object
+      additionalProperties: false
+      required: [id, organisation, network, total, txHash, paidAt, createdBy, approvedBy, lines]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation:
+          type: string
+        network:
+          type: string
+        total:
+          $ref: "#/components/schemas/Amount"
+        txHash:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          description: The member's name.
+        approvedBy:
+          type: array
+          items:
+            type: string
+        sentBy:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchReceiptLine"
+
+    BatchReceiptLine:
+      type: object
+      additionalProperties: false
+      required: [lineNo, contractorName, wallet, amount, reference, trackingCode]
+      properties:
+        lineNo:
+          type: integer
+        contractorName:
+          type: string
+        wallet:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        reference:
+          type: string
+        trackingCode:
+          type: string
+
     Health:
       type: object
       additionalProperties: false

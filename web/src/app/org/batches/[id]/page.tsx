@@ -139,6 +139,17 @@ async function Loaded({ params }: { params: Promise<{ id: string }> }) {
             Transaction <span className="font-mono break-all">{b.txHash}</span>
           </p>
         )}
+        {b.state === "paid" && (
+          <p>
+            <a
+              href={`/org/batches/${b.id}/receipt`}
+              download
+              className="font-semibold underline print:hidden"
+            >
+              Download the receipt (PDF)
+            </a>
+          </p>
+        )}
         {moving && (
           <p>
             The money is on its way.{" "}
