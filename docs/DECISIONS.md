@@ -329,3 +329,27 @@ Events are invoice state changes (`invoice.received` … `invoice.reopened`), de
   - The Paystack balance, which in test mode holds a prefund the ledger never sees.
   - The FX position, which is treasury work (RISKS).
 - **Provider checks:** reported as *skipped*, not passed, when no Paystack key is configured.
+
+## ADR-045 Stage 5: failover, telemetry, Bitcoin receive, Ethereum Sepolia
+**Status:** Accepted, 2026-10-18 (owner approved [design/stage5.md](design/stage5.md) and its three choices before anything was built).
+**Context:** Stage 5 adds a network family, a dependency, two opt-in containers and an observability stack. Each needed approval first.
+**Decision:**
+- **Failover:** `WAYBILL_CHAINS` takes several RPC URLs per network.
+  - An `rpcpool` client retries a transport failure once on the next healthy endpoint, and never retries a JSON-RPC answer.
+  - Every endpoint must pass the chain-ID check.
+  - Health is shown in `/v1/health` and in metrics.
+- **Telemetry:** the OpenTelemetry SDK exports over OTLP/HTTP, and only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. An opt-in Compose profile `observability` runs one pinned `grafana/otel-lgtm` container.
+- **Bitcoin is receive only:**
+  - Waybill holds only an extended public key; any private key is refused at startup.
+  - Addresses are BIP84 P2WPKH, derived with `github.com/btcsuite/btcd/btcutil`.
+  - Regtest uses a pinned `bitcoind` in an opt-in Compose profile `bitcoin`. Signet is read through the public mempool.space Esplora API.
+- **Ethereum Sepolia** is deployed and checked like Base Sepolia, by a manual live run with a throwaway key that the owner types into their own terminal.
+- **OpenAPI 0.8.0:**
+  - BTC invoices, with payout `hold` only.
+  - `DepositAddress.token` becomes optional, and a `uri` field is added.
+  - `/v1/health` gains RPC health per network.
+**Consequences:**
+- **Schema:** new tables `btc_addresses`, `btc_payments` and `btc_cursors`. The EVM tables keep their strict `0x` checks, and the ledger tables are unchanged.
+- **Dependencies:** `btcutil`, and the `go.opentelemetry.io` packages (SDK, OTLP-HTTP exporters, `otelhttp`).
+- **Signet relies on a third party:** a mempool.space outage stops signet watching. Waybill then reports the state as unknown, never as unpaid.
+- **No sweeping or batch pay in BTC:** Waybill cannot spend what it receives in Bitcoin.
