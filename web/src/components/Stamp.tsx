@@ -7,7 +7,7 @@ const variantClass: Record<StampVariant, string> = {
   received: "border-ink text-ink",
   confirmed: "border-ink text-ink border-double border-[3px]",
   delivered:
-    "border-delivered text-paper bg-delivered border-double border-[3px]",
+    "stamp-solid border-delivered text-paper bg-delivered border-double border-[3px]",
   waiting: "border-ink-muted text-ink-muted border-dashed",
   checking: "border-ink text-ink border-dashed",
   problem: "border-ink text-ink border-[3px]",

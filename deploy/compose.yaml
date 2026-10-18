@@ -150,6 +150,8 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8080
       WAYBILL_DEV_CONTRACTOR_KEY: ${WAYBILL_DEV_CONTRACTOR_KEY}
+      WAYBILL_DEV_ADMIN_KEY: ${WAYBILL_DEV_ADMIN_KEY:-}
+      WAYBILL_DEV_APPROVER_KEY: ${WAYBILL_DEV_APPROVER_KEY:-}
     ports: ["127.0.0.1:${WAYBILL_WEB_PORT:-3000}:3000"]
     depends_on:
       api: { condition: service_healthy }

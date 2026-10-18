@@ -50,7 +50,7 @@ Both faces are self-hosted through `next/font`, subset to Latin and the naira si
 
 ### Stamps
 
-A status is shown as a rubber-stamp mark: an uppercase label in Plex Sans 600, letter-spaced, inside a border, rotated −2° and printed at 90% opacity.
+A status is shown as a rubber-stamp mark: an uppercase label in Plex Sans 600, letter-spaced, inside a border, rotated −2° and printed at 90% opacity (the filled *delivered* stamp prints solid, so its light text keeps AA contrast).
 
 | Stamp | Border | Colour | Meaning |
 |---|---|---|---|
