@@ -4,18 +4,18 @@
 
 -- name: CreateAPIKey :one
 INSERT INTO api_keys (contractor_id, prefix, secret_sha256, name)
-VALUES (@contractor_id, @prefix, @secret_sha256, @name)
+VALUES (@contractor_id::uuid, @prefix, @secret_sha256, @name)
 RETURNING id, name, prefix, created_at, last_used_at, revoked_at;
 
 -- name: ListAPIKeys :many
 SELECT id, name, prefix, created_at, last_used_at, revoked_at
-FROM api_keys WHERE contractor_id = @contractor_id
+FROM api_keys WHERE contractor_id = @contractor_id::uuid
 ORDER BY created_at DESC, id;
 
 -- name: LockContractorAPIKeys :many
 -- Serialises revocations for one contractor, so two concurrent revokes
 -- cannot each see the other key as "still active" and remove both.
-SELECT id, revoked_at FROM api_keys WHERE contractor_id = @contractor_id ORDER BY id FOR UPDATE;
+SELECT id, revoked_at FROM api_keys WHERE contractor_id = @contractor_id::uuid ORDER BY id FOR UPDATE;
 
 -- name: RevokeAPIKey :exec
 UPDATE api_keys SET revoked_at = now() WHERE id = @id AND revoked_at IS NULL;

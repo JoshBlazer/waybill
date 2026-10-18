@@ -8,13 +8,17 @@ RETURNING *;
 
 -- name: InsertAPIKey :exec
 INSERT INTO api_keys (contractor_id, prefix, secret_sha256)
-VALUES (@contractor_id, @prefix, @secret_sha256)
+VALUES (@contractor_id::uuid, @prefix, @secret_sha256)
 ON CONFLICT (prefix) DO NOTHING;
 
 -- name: GetActiveAPIKey :one
-SELECT k.contractor_id, k.secret_sha256
+-- A key belongs to a contractor or to an organisation member; a removed
+-- member's keys stop working.
+SELECT k.contractor_id, k.member_id, m.org_id, k.secret_sha256
 FROM api_keys k
-WHERE k.prefix = @prefix AND k.revoked_at IS NULL;
+LEFT JOIN org_members m ON m.id = k.member_id
+WHERE k.prefix = @prefix AND k.revoked_at IS NULL
+  AND (k.member_id IS NULL OR m.removed_at IS NULL);
 
 -- name: GetInvoiceTrackingCode :one
 SELECT tracking_code FROM invoices WHERE id = @id;
@@ -41,10 +45,10 @@ RETURNING *;
 
 -- name: InsertDepositAddress :exec
 INSERT INTO deposit_addresses (network, address, invoice_id, salt)
-VALUES (@network, @address, @invoice_id, @salt);
+VALUES (@network, @address, @invoice_id::uuid, @salt);
 
 -- name: ListDepositAddresses :many
-SELECT * FROM deposit_addresses WHERE invoice_id = @invoice_id ORDER BY network;
+SELECT * FROM deposit_addresses WHERE invoice_id = @invoice_id::uuid ORDER BY network;
 
 -- name: GetInvoiceByTrackingCode :one
 SELECT i.*, c.legal_name AS contractor_name, c.verified_at AS contractor_verified_at
@@ -77,14 +81,14 @@ SELECT coalesce(max(id), 0)::bigint FROM invoice_events WHERE invoice_id = @invo
 -- name: ListWatchedAddresses :many
 -- Every deposit address on a network, including expired invoices: late
 -- payments are still recorded (docs/RISKS.md §7).
-SELECT address, invoice_id FROM deposit_addresses WHERE network = @network;
+SELECT address, invoice_id, org_id FROM deposit_addresses WHERE network = @network;
 
 -- name: InsertPayment :one
 -- ON CONFLICT: the same log seen twice is the same payment (I9).
 INSERT INTO payments (network, tx_hash, log_index, block_number, block_hash, token_address,
-                      from_address, to_address, invoice_id, asset_code, amount)
+                      from_address, to_address, invoice_id, org_id, asset_code, amount)
 VALUES (@network, @tx_hash, @log_index, @block_number, @block_hash, @token_address,
-        @from_address, @to_address, @invoice_id, @asset_code, @amount)
+        @from_address, @to_address, sqlc.narg(invoice_id), sqlc.narg(org_id), @asset_code, @amount)
 ON CONFLICT (network, tx_hash, log_index) WHERE state <> 'reorged' DO NOTHING
 RETURNING *;
 
@@ -101,14 +105,14 @@ UPDATE payments SET state = 'final', final_at = now() WHERE id = @id AND state =
 -- Total of an invoice's payments that have reached at least the given state.
 SELECT coalesce(sum(amount), 0)::minor_units AS total
 FROM payments
-WHERE invoice_id = @invoice_id
+WHERE invoice_id = @invoice_id::uuid
   AND state = ANY(@states::text[]);
 
 -- name: MarkPaymentReorged :execrows
 UPDATE payments SET state = 'reorged', reorged_at = now() WHERE id = @id AND state IN ('detected', 'confirmed');
 
 -- name: ListLivePaymentsByInvoice :many
-SELECT * FROM payments WHERE invoice_id = @invoice_id AND state <> 'reorged' ORDER BY block_number, log_index;
+SELECT * FROM payments WHERE invoice_id = @invoice_id::uuid AND state <> 'reorged' ORDER BY block_number, log_index;
 
 -- name: GetChainTip :one
 SELECT height, hash FROM chain_blocks WHERE network = @network ORDER BY height DESC LIMIT 1;
@@ -157,8 +161,15 @@ WHERE principal = @principal AND key = @key;
 -- name: ListUnsweptFinalPayments :many
 -- Final payments on a network with no sweep job yet (the job dedupe key is
 -- sweep:<payment id>).
-SELECT p.id, p.invoice_id FROM payments p
+SELECT p.id, p.invoice_id, p.org_id FROM payments p
 WHERE p.network = @network AND p.state = 'final'
   AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.dedupe_key = 'sweep:' || p.id::text)
 ORDER BY p.final_at, p.id
 LIMIT 100;
+
+-- name: SumOrgPaymentsByState :one
+-- Total of an organisation funding payments in the given states.
+SELECT coalesce(sum(amount), 0)::minor_units AS total
+FROM payments
+WHERE org_id = @org_id::uuid
+  AND state = ANY(@states::text[]);

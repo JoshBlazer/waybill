@@ -84,6 +84,8 @@ services:
       WAYBILL_DEPLOYMENTS_DIR: /deployments
       WAYBILL_WEB_URL: http://localhost:${WAYBILL_WEB_PORT:-3000}
       WAYBILL_DEV_CONTRACTOR_KEY: ${WAYBILL_DEV_CONTRACTOR_KEY:?run make up, which generates deploy/.env}
+      WAYBILL_DEV_ADMIN_KEY: ${WAYBILL_DEV_ADMIN_KEY:-}
+      WAYBILL_DEV_APPROVER_KEY: ${WAYBILL_DEV_APPROVER_KEY:-}
       PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
       # Opt in (=1) to deliver webhooks to http and private hosts on this
       # Anvil-only stack. Refused by the services on any other network.

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Waybill API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Waybill lets small web3 teams pay Nigerian contractors in stablecoins and
     lets contractors receive naira, with every payment trackable.
@@ -32,6 +32,8 @@ tags:
     description: The contractor's bank account and naira payouts.
   - name: providers
     description: Callbacks from payment providers. Not for clients.
+  - name: org
+    description: A payer organisation, its members and roles, and its funding.
 paths:
   /v1/health:
     get:
@@ -530,12 +532,164 @@ paths:
         "401":
           $ref: "#/components/responses/Problem"
 
+  /v1/org:
+    get:
+      operationId: getOrg
+      tags: [org]
+      summary: The caller's organisation.
+      security:
+        - memberKey: []
+      responses:
+        "200":
+          description: The organisation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "401":
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateOrg
+      tags: [org]
+      summary: Change the approval threshold. Admins only.
+      description: |
+        Runs whose total is above the threshold wait for an approver who is
+        not their creator. Changing it does not affect runs already
+        approved.
+      security:
+        - memberKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgRequest"
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+
+  /v1/org/members:
+    get:
+      operationId: listMembers
+      tags: [org]
+      summary: The organisation's members, including removed ones.
+      security:
+        - memberKey: []
+      responses:
+        "200":
+          description: The members.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberList"
+        "401":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: addMember
+      tags: [org]
+      summary: Add a member and create their first API key. Admins only.
+      description: |
+        The new member's API key is in this response only; Waybill stores a
+        SHA-256 hash of it. Give it to the member over a private channel.
+      security:
+        - memberKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberRequest"
+      responses:
+        "201":
+          description: Added. `apiKey` is shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddedMember"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+
+  /v1/org/members/{id}:
+    patch:
+      operationId: updateMember
+      tags: [org]
+      summary: Change a member's roles, or remove them. Admins only.
+      description: |
+        A removed member's keys stop working at once. The organisation's
+        last admin cannot be removed or lose the admin role (409).
+      security:
+        - memberKey: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+
+  /v1/org/funding:
+    get:
+      operationId: getFunding
+      tags: [org]
+      summary: Where to send test USDC to fund batch runs, and the balance.
+      description: |
+        One deposit address per network, unique to the organisation and
+        permanent. Money sent there is `pending` until the payment is final
+        on-chain, then `available` for runs.
+      security:
+        - memberKey: []
+      responses:
+        "200":
+          description: Funding addresses and balances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Funding"
+        "401":
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     contractorKey:
       type: http
       scheme: bearer
       description: A contractor API key, `wb_test_…`.
+    memberKey:
+      type: http
+      scheme: bearer
+      description: An organisation member's API key, `wb_test_…`.
 
   parameters:
     IdempotencyKey:
@@ -759,6 +913,130 @@ components:
           type: string
           format: date-time
           description: When the locked rate, and so this naira amount, expires.
+
+    MemberRole:
+      type: string
+      enum: [admin, maker, approver]
+      description: |
+        `admin` manages members and the threshold, `maker` builds and sends
+        runs, `approver` approves runs above the threshold. A member may
+        hold several; nobody approves their own run.
+
+    Org:
+      type: object
+      additionalProperties: false
+      required: [id, name, approvalThreshold, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        approvalThreshold:
+          $ref: "#/components/schemas/Amount"
+        createdAt:
+          type: string
+          format: date-time
+
+    UpdateOrgRequest:
+      type: object
+      additionalProperties: false
+      required: [approvalThreshold]
+      properties:
+        approvalThreshold:
+          type: string
+          pattern: "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+          description: In USDC, as a decimal string, for example `"500"`.
+          example: "500"
+
+    Member:
+      type: object
+      additionalProperties: false
+      required: [id, name, roles, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MemberRole"
+        createdAt:
+          type: string
+          format: date-time
+        removedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    MemberList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+
+    AddMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [name, roles]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MemberRole"
+
+    AddedMember:
+      type: object
+      additionalProperties: false
+      required: [member, apiKey]
+      properties:
+        member:
+          $ref: "#/components/schemas/Member"
+        apiKey:
+          type: string
+          description: The member's API key. Shown once.
+
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/MemberRole"
+        removed:
+          type: boolean
+          description: "`true` removes the member. Removal is permanent."
+
+    Funding:
+      type: object
+      additionalProperties: false
+      required: [depositAddresses, pending, available]
+      properties:
+        depositAddresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositAddress"
+        pending:
+          $ref: "#/components/schemas/Amount"
+        available:
+          $ref: "#/components/schemas/Amount"
 
     TrackingStep:
       type: object

@@ -1,4 +1,5 @@
-// Package auth authenticates contractors by API key.
+// Package auth authenticates contractors and organisation members by API
+// key.
 //
 // A key looks like wb_test_<prefix>_<secret>. The prefix (8 characters) is a
 // public lookup id; the database stores only SHA-256 of the whole key, and
@@ -65,41 +66,80 @@ func ParseKey(full string) (Key, error) {
 	return Key{Full: full, Prefix: m[1], Hash: sha256.Sum256([]byte(full))}, nil
 }
 
-// Authenticate resolves an "Authorization: Bearer <key>" header value to a
-// contractor id.
-func Authenticate(ctx context.Context, db store.DBTX, authorization string) (uuid.UUID, error) {
+// Principal is who a key belongs to: a contractor, or a member of a payer
+// organisation. Exactly one of ContractorID and MemberID is set.
+type Principal struct {
+	ContractorID uuid.UUID
+	MemberID     uuid.UUID
+	OrgID        uuid.UUID // the member's organisation
+}
+
+// IsMember reports whether the key belongs to an organisation member.
+func (p Principal) IsMember() bool { return p.MemberID != uuid.Nil }
+
+// Authenticate resolves an "Authorization: Bearer <key>" header value to the
+// key's owner.
+func Authenticate(ctx context.Context, db store.DBTX, authorization string) (Principal, error) {
 	token, ok := strings.CutPrefix(authorization, "Bearer ")
 	if !ok {
-		return uuid.Nil, ErrUnauthenticated
+		return Principal{}, ErrUnauthenticated
 	}
 	k, err := ParseKey(strings.TrimSpace(token))
 	if err != nil {
-		return uuid.Nil, ErrUnauthenticated
+		return Principal{}, ErrUnauthenticated
 	}
 	row, err := store.New(db).GetActiveAPIKey(ctx, k.Prefix)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, ErrUnauthenticated
+		return Principal{}, ErrUnauthenticated
 	}
 	if err != nil {
-		return uuid.Nil, err // a database failure is not "wrong key"
+		return Principal{}, err // a database failure is not "wrong key"
 	}
 	if subtle.ConstantTimeCompare(row.SecretSha256, k.Hash[:]) != 1 {
-		return uuid.Nil, ErrUnauthenticated
+		return Principal{}, ErrUnauthenticated
+	}
+	var p Principal
+	switch {
+	case row.ContractorID != nil:
+		p.ContractorID = *row.ContractorID
+	case row.MemberID != nil && row.OrgID != nil:
+		p.MemberID, p.OrgID = *row.MemberID, *row.OrgID
+	default:
+		return Principal{}, ErrUnauthenticated
 	}
 	// Best effort: a failure to record use must not refuse a valid key.
 	_ = store.New(db).TouchAPIKey(ctx, k.Prefix)
-	return row.ContractorID, nil
+	return p, nil
 }
 
 type ctxKey struct{}
 
-// WithContractor returns ctx carrying the authenticated contractor id.
-func WithContractor(ctx context.Context, id uuid.UUID) context.Context {
-	return context.WithValue(ctx, ctxKey{}, id)
+// WithPrincipal returns ctx carrying the authenticated key owner.
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, ctxKey{}, p)
 }
 
-// ContractorFrom returns the authenticated contractor id, if any.
+// WithContractor returns ctx carrying an authenticated contractor.
+func WithContractor(ctx context.Context, id uuid.UUID) context.Context {
+	return WithPrincipal(ctx, Principal{ContractorID: id})
+}
+
+// ContractorFrom returns the authenticated contractor id, if the key
+// belongs to a contractor.
 func ContractorFrom(ctx context.Context) (uuid.UUID, bool) {
-	id, ok := ctx.Value(ctxKey{}).(uuid.UUID)
-	return id, ok
+	p, ok := ctx.Value(ctxKey{}).(Principal)
+	if !ok || p.ContractorID == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return p.ContractorID, true
+}
+
+// MemberFrom returns the authenticated organisation member, if the key
+// belongs to one.
+func MemberFrom(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(ctxKey{}).(Principal)
+	if !ok || !p.IsMember() {
+		return Principal{}, false
+	}
+	return p, true
 }

@@ -192,32 +192,40 @@ func (w *Watcher) scanRange(ctx context.Context, from, to uint64) error {
 			continue
 		}
 		to := common.BytesToAddress(l.Topics[2].Bytes())
-		invoiceID, ok := watched[evm.NormalizeAddress(to)]
+		o, ok := watched[evm.NormalizeAddress(to)]
 		if !ok {
 			continue
 		}
-		if err := w.recordPayment(ctx, l, invoiceID); err != nil {
+		if err := w.recordPayment(ctx, l, o); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (w *Watcher) watchedAddresses(ctx context.Context) (map[string]uuid.UUID, error) {
+// owner is what a deposit address belongs to: an invoice, or (for funding)
+// a payer organisation. Exactly one is set.
+type owner struct {
+	invoice *uuid.UUID
+	org     *uuid.UUID
+}
+
+func (w *Watcher) watchedAddresses(ctx context.Context) (map[string]owner, error) {
 	rows, err := store.New(w.Pool).ListWatchedAddresses(ctx, string(w.Cfg.Network))
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]uuid.UUID, len(rows))
+	out := make(map[string]owner, len(rows))
 	for _, r := range rows {
-		out[r.Address] = r.InvoiceID
+		out[r.Address] = owner{invoice: r.InvoiceID, org: r.OrgID}
 	}
 	return out, nil
 }
 
-// recordPayment stores a newly seen transfer and moves the invoice to
-// received, in one transaction. Seeing the same log again does nothing.
-func (w *Watcher) recordPayment(ctx context.Context, l types.Log, invoiceID uuid.UUID) error {
+// recordPayment stores a newly seen transfer and, for an invoice, moves the
+// invoice to received, in one transaction. Seeing the same log again does
+// nothing.
+func (w *Watcher) recordPayment(ctx context.Context, l types.Log, o owner) error {
 	amount, err := money.FromBig(new(big.Int).SetBytes(l.Data))
 	if err != nil || amount.Sign() <= 0 {
 		return nil // zero-value or absurd transfer: nothing to credit
@@ -232,7 +240,8 @@ func (w *Watcher) recordPayment(ctx context.Context, l types.Log, invoiceID uuid
 			TokenAddress: evm.NormalizeAddress(l.Address),
 			FromAddress:  evm.NormalizeAddress(common.BytesToAddress(l.Topics[1].Bytes())),
 			ToAddress:    evm.NormalizeAddress(common.BytesToAddress(l.Topics[2].Bytes())),
-			InvoiceID:    invoiceID,
+			InvoiceID:    o.invoice,
+			OrgID:        o.org,
 			AssetCode:    string(w.Cfg.Asset.Code),
 			Amount:       amount,
 		})
@@ -242,6 +251,10 @@ func (w *Watcher) recordPayment(ctx context.Context, l types.Log, invoiceID uuid
 		if err != nil {
 			return err
 		}
+		if o.invoice == nil {
+			return nil // funding: credited at confirmation
+		}
+		invoiceID := *o.invoice
 		_, err = invoice.Apply(ctx, tx, invoiceID, statemachine.EvPaymentDetected, map[string]any{
 			"paymentId": p.ID, "txHash": p.TxHash, "amount": amount.String(),
 		})
@@ -446,10 +459,13 @@ func (w *Watcher) rewind(ctx context.Context, next, replaced uint64) error {
 					return err
 				}
 			}
-			if _, ok := byInvoice[p.InvoiceID]; !ok {
-				order = append(order, p.InvoiceID)
+			if p.InvoiceID == nil {
+				continue // funding: reversing the confirmation is all there is
 			}
-			byInvoice[p.InvoiceID] = append(byInvoice[p.InvoiceID], p.ID)
+			if _, ok := byInvoice[*p.InvoiceID]; !ok {
+				order = append(order, *p.InvoiceID)
+			}
+			byInvoice[*p.InvoiceID] = append(byInvoice[*p.InvoiceID], p.ID)
 		}
 		for _, id := range order {
 			if err := w.rederive(ctx, tx, id, byInvoice[id]); err != nil {
@@ -470,7 +486,8 @@ func (w *Watcher) rewind(ctx context.Context, next, replaced uint64) error {
 }
 
 // reverseConfirmation reverses a payment's deposit.confirmed entry: custody
-// and the contractor's pending balance both go back down.
+// and the contractor's (or organisation's) pending balance both go back
+// down.
 func reverseConfirmation(ctx context.Context, tx pgx.Tx, p store.Payment) error {
 	e, err := store.New(tx).GetJournalEntryByIdempotencyKey(ctx, "payment:"+p.ID.String()+":confirmed")
 	if err != nil {
@@ -551,11 +568,14 @@ func (w *Watcher) confirm(ctx context.Context, tx pgx.Tx, p store.Payment) error
 	if err := q.MarkPaymentConfirmed(ctx, p.ID); err != nil {
 		return err
 	}
-	inv, err := q.GetInvoiceForUpdate(ctx, p.InvoiceID)
+	if p.InvoiceID == nil {
+		return w.confirmFunding(ctx, tx, p)
+	}
+	inv, err := q.GetInvoiceForUpdate(ctx, *p.InvoiceID)
 	if err != nil {
 		return err
 	}
-	custody, pending, _, err := w.accounts(ctx, tx, inv.ContractorID)
+	custody, pending, _, err := w.accounts(ctx, tx, "contractor", inv.ContractorID)
 	if err != nil {
 		return err
 	}
@@ -602,25 +622,15 @@ func (w *Watcher) finalize(ctx context.Context, tx pgx.Tx, p store.Payment) erro
 	if err := q.MarkPaymentFinal(ctx, p.ID); err != nil {
 		return err
 	}
-	inv, err := q.GetInvoiceForUpdate(ctx, p.InvoiceID)
+	if p.InvoiceID == nil {
+		return w.postFinal(ctx, tx, p, "org", *p.OrgID)
+	}
+	inv, err := q.GetInvoiceForUpdate(ctx, *p.InvoiceID)
 	if err != nil {
 		return err
 	}
-	_, pending, available, err := w.accounts(ctx, tx, inv.ContractorID)
-	if err != nil {
+	if err := w.postFinal(ctx, tx, p, "contractor", inv.ContractorID); err != nil {
 		return err
-	}
-	if _, err := ledger.Post(ctx, tx, ledger.Entry{
-		IdempotencyKey: "payment:" + p.ID.String() + ":final",
-		Kind:           "deposit.final",
-		RefType:        "payment",
-		RefID:          p.ID.String(),
-		Postings: []ledger.Posting{
-			{Account: pending.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount},
-			{Account: available.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount.Neg()},
-		},
-	}); err != nil {
-		return fmt.Errorf("ledger: %w", err)
 	}
 	notFinal, err := q.SumPaymentsByState(ctx, store.SumPaymentsByStateParams{InvoiceID: inv.ID, States: []string{"detected", "confirmed"}})
 	if err != nil {
@@ -642,9 +652,54 @@ func (w *Watcher) finalize(ctx context.Context, tx pgx.Tx, p store.Payment) erro
 	return err
 }
 
+// confirmFunding credits an organisation's pending balance with a confirmed
+// funding deposit (docs/design/teams.md §6).
+func (w *Watcher) confirmFunding(ctx context.Context, tx pgx.Tx, p store.Payment) error {
+	custody, pending, _, err := w.accounts(ctx, tx, "org", *p.OrgID)
+	if err != nil {
+		return err
+	}
+	if _, err := ledger.Post(ctx, tx, ledger.Entry{
+		IdempotencyKey: "payment:" + p.ID.String() + ":confirmed",
+		Kind:           "deposit.confirmed",
+		RefType:        "payment",
+		RefID:          p.ID.String(),
+		Postings: []ledger.Posting{
+			{Account: custody.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount},
+			{Account: pending.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount.Neg()},
+		},
+	}); err != nil {
+		return fmt.Errorf("ledger: %w", err)
+	}
+	return nil
+}
+
+// postFinal moves a final payment from its owner's pending to available
+// balance.
+func (w *Watcher) postFinal(ctx context.Context, tx pgx.Tx, p store.Payment, kind string, id uuid.UUID) error {
+	_, pending, available, err := w.accounts(ctx, tx, kind, id)
+	if err != nil {
+		return err
+	}
+	if _, err := ledger.Post(ctx, tx, ledger.Entry{
+		IdempotencyKey: "payment:" + p.ID.String() + ":final",
+		Kind:           "deposit.final",
+		RefType:        "payment",
+		RefID:          p.ID.String(),
+		Postings: []ledger.Posting{
+			{Account: pending.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount},
+			{Account: available.ID, Asset: w.Cfg.Asset.Code, Amount: p.Amount.Neg()},
+		},
+	}); err != nil {
+		return fmt.Errorf("ledger: %w", err)
+	}
+	return nil
+}
+
 // accounts returns (creating if needed) the custody account for this
-// network and the contractor's pending and available balances.
-func (w *Watcher) accounts(ctx context.Context, tx pgx.Tx, contractor uuid.UUID) (custody, pending, available ledger.Account, err error) {
+// network and the pending and available balances of a contractor or an
+// organisation (kind "contractor" or "org").
+func (w *Watcher) accounts(ctx context.Context, tx pgx.Tx, kind string, id uuid.UUID) (custody, pending, available ledger.Account, err error) {
 	asset := w.Cfg.Asset.Code
 	net := strings.ReplaceAll(string(w.Cfg.Network), ":", "_")
 	custody, err = ledger.EnsureAccount(ctx, tx, ledger.Account{
@@ -654,13 +709,13 @@ func (w *Watcher) accounts(ctx context.Context, tx pgx.Tx, contractor uuid.UUID)
 		return
 	}
 	pending, err = ledger.EnsureAccount(ctx, tx, ledger.Account{
-		Code: fmt.Sprintf("liability:contractor:%s:%s:pending", contractor, asset), Asset: asset, Kind: ledger.KindLiability, Rule: ledger.NonPositive,
+		Code: fmt.Sprintf("liability:%s:%s:%s:pending", kind, id, asset), Asset: asset, Kind: ledger.KindLiability, Rule: ledger.NonPositive,
 	})
 	if err != nil {
 		return
 	}
 	available, err = ledger.EnsureAccount(ctx, tx, ledger.Account{
-		Code: fmt.Sprintf("liability:contractor:%s:%s:available", contractor, asset), Asset: asset, Kind: ledger.KindLiability, Rule: ledger.NonPositive,
+		Code: fmt.Sprintf("liability:%s:%s:%s:available", kind, id, asset), Asset: asset, Kind: ledger.KindLiability, Rule: ledger.NonPositive,
 	})
 	return
 }

@@ -50,6 +50,13 @@ env: deploy/.env
 	@grep -q '^WAYBILL_SIGNER_KEY=' deploy/.env || { \
 		umask 077; printf 'WAYBILL_SIGNER_KEY=0x%s\n' "$$(LC_ALL=C tr -dc '0-9a-f' </dev/urandom | head -c 64)" >> deploy/.env; \
 		echo "Added a local service signing key to deploy/.env."; }
+	@for v in WAYBILL_DEV_ADMIN_KEY WAYBILL_DEV_APPROVER_KEY; do \
+		grep -q "^$$v=" deploy/.env || { \
+		umask 077; printf '%s=wb_test_%s_%s\n' "$$v" \
+			"$$(LC_ALL=C tr -dc '0-9a-z' </dev/urandom | head -c 8)" \
+			"$$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 52)" >> deploy/.env; \
+		echo "Added $$v (demo organisation member) to deploy/.env."; }; \
+	done
 
 up: env contracts/lib/forge-std/src ## Build and start the local stack; waits until every service is healthy
 	$(COMPOSE) up --build --detach --wait

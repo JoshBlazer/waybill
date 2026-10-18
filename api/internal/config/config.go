@@ -33,6 +33,10 @@ type Config struct {
 	// DevContractorKey is the API key seed-dev installs for the local demo
 	// contractor. Local stacks only.
 	DevContractorKey string
+	// DevAdminKey and DevApproverKey are the API keys seed-dev installs for
+	// the demo organisation's two members (stage 4). Optional.
+	DevAdminKey    string
+	DevApproverKey string
 	// WebhookAllowPrivate lets webhook endpoints use http and private hosts
 	// (WAYBILL_WEBHOOK_ALLOW_PRIVATE=1). Refused unless every chain is Anvil.
 	WebhookAllowPrivate bool
@@ -90,6 +94,8 @@ func LoadFrom(getenv Getenv) (Config, error) {
 		DeploymentsDir:    withDefault(getenv("WAYBILL_DEPLOYMENTS_DIR"), "../contracts/deployments"),
 		WebURL:            strings.TrimRight(withDefault(getenv("WAYBILL_WEB_URL"), "http://localhost:3000"), "/"),
 		DevContractorKey:  getenv("WAYBILL_DEV_CONTRACTOR_KEY"),
+		DevAdminKey:       getenv("WAYBILL_DEV_ADMIN_KEY"),
+		DevApproverKey:    getenv("WAYBILL_DEV_APPROVER_KEY"),
 		SignerKey:         Secret(getenv("WAYBILL_SIGNER_KEY")),
 		Rates:             withDefault(getenv("WAYBILL_RATES"), "fake"),
 		RateSpreadBps:     150,

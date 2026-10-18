@@ -14,6 +14,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/bankverify"
 	"github.com/JoshBlazer/waybill/api/internal/checkout"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
+	"github.com/JoshBlazer/waybill/api/internal/org"
 	"github.com/JoshBlazer/waybill/api/internal/paystack"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 )
@@ -42,6 +43,7 @@ type Server struct {
 	Resolver bankverify.Resolver   // bank account names (ADR-040)
 	Paystack *paystack.Client      // webhook signatures; nil when no key is configured
 	Checkout *checkout.Service     // card and bank pay-in; nil disables it
+	Org      *org.Service          // payer organisations (stage 4)
 	Now      func() time.Time      // nil means time.Now
 }
 
@@ -100,13 +102,30 @@ var authenticatedOperations = map[string]bool{
 	"AcceptShortfall":       true,
 }
 
-// IsAuthenticated reports whether an operation requires a contractor key.
-func IsAuthenticated(operationID string) bool { return authenticatedOperations[operationID] }
+// memberOperations lists the operations that need an organisation
+// member's key (stage 4, ADR-043). Like authenticatedOperations, it is kept
+// in step with the spec by TestAuthenticatedOperationsMatchSpec.
+var memberOperations = map[string]bool{
+	"GetOrg":       true,
+	"UpdateOrg":    true,
+	"ListMembers":  true,
+	"AddMember":    true,
+	"UpdateMember": true,
+	"GetFunding":   true,
+}
 
-// AuthenticatedOperations lists the operations that require a contractor key.
+// IsAuthenticated reports whether an operation requires a key.
+func IsAuthenticated(operationID string) bool {
+	return authenticatedOperations[operationID] || memberOperations[operationID]
+}
+
+// AuthenticatedOperations lists the operations that require a key.
 func AuthenticatedOperations() []string {
-	out := make([]string, 0, len(authenticatedOperations))
+	out := make([]string, 0, len(authenticatedOperations)+len(memberOperations))
 	for op := range authenticatedOperations {
+		out = append(out, op)
+	}
+	for op := range memberOperations {
 		out = append(out, op)
 	}
 	return out
@@ -130,22 +149,31 @@ func NewHandler(s *Server) http.Handler {
 	}))
 }
 
-// authMiddleware authenticates operations that require a contractor key and
-// puts the contractor id in the context.
+// authMiddleware authenticates operations that require a key and puts its
+// owner in the context. A contractor key cannot call a member operation,
+// nor a member key a contractor operation.
 func (s *Server) authMiddleware(f StrictHandlerFunc, operationID string) StrictHandlerFunc {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
-		if !authenticatedOperations[operationID] {
+		forContractor, forMember := authenticatedOperations[operationID], memberOperations[operationID]
+		if !forContractor && !forMember {
 			return f(ctx, w, r, req)
 		}
-		id, err := auth.Authenticate(ctx, s.Pool, r.Header.Get("Authorization"))
+		title := "A valid contractor API key is required."
+		if forMember {
+			title = "A valid organisation member API key is required."
+		}
+		p, err := auth.Authenticate(ctx, s.Pool, r.Header.Get("Authorization"))
+		if err == nil && p.IsMember() != forMember {
+			err = auth.ErrUnauthenticated
+		}
 		if errors.Is(err, auth.ErrUnauthenticated) {
-			writeProblem(w, http.StatusUnauthorized, "unauthenticated", "A valid contractor API key is required.", "")
+			writeProblem(w, http.StatusUnauthorized, "unauthenticated", title, "")
 			return nil, nil
 		}
 		if err != nil {
 			return nil, err
 		}
-		return f(auth.WithContractor(ctx, id), w, r, req)
+		return f(auth.WithPrincipal(ctx, p), w, r, req)
 	}
 }
 

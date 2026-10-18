@@ -14,18 +14,65 @@ import (
 
 type ApiKey struct {
 	ID           uuid.UUID
-	ContractorID uuid.UUID
+	ContractorID *uuid.UUID
 	Prefix       string
 	SecretSha256 []byte
 	CreatedAt    time.Time
 	RevokedAt    *time.Time
 	Name         string
 	LastUsedAt   *time.Time
+	MemberID     *uuid.UUID
+}
+
+type Approval struct {
+	BatchID    uuid.UUID
+	CreatorID  uuid.UUID
+	ApproverID uuid.UUID
+	Decision   string
+	DecidedAt  time.Time
 }
 
 type Asset struct {
 	Code  string
 	Scale int16
+}
+
+type Batch struct {
+	ID           uuid.UUID
+	OrgID        uuid.UUID
+	CreatedBy    uuid.UUID
+	Network      string
+	AssetCode    string
+	Total        money.Amount
+	State        string
+	ChainBatchID []byte
+	OutboundTxID *uuid.UUID
+	Failure      *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type BatchEvent struct {
+	ID        int64
+	BatchID   uuid.UUID
+	Type      string
+	FromState string
+	ToState   string
+	MemberID  *uuid.UUID
+	Data      []byte
+	CreatedAt time.Time
+}
+
+type BatchLine struct {
+	BatchID       uuid.UUID
+	LineNo        int32
+	ContractorID  uuid.UUID
+	WalletAddress *string
+	Amount        money.Amount
+	Reference     string
+	Problem       *string
+	PayoutID      []byte
+	TrackingCode  string
 }
 
 type ChainBlock struct {
@@ -81,11 +128,20 @@ type ContractorBankAccount struct {
 	UpdatedAt          time.Time
 }
 
+type ContractorWallet struct {
+	ContractorID       uuid.UUID
+	Network            string
+	Address            string
+	AddedAt            time.Time
+	PayoutsAllowedFrom time.Time
+}
+
 type DepositAddress struct {
 	Network   string
 	Address   string
-	InvoiceID uuid.UUID
+	InvoiceID *uuid.UUID
 	Salt      []byte
+	OrgID     *uuid.UUID
 }
 
 type IdempotencyKey struct {
@@ -150,6 +206,15 @@ type LedgerBalance struct {
 	Balance     money.Amount
 }
 
+type OrgMember struct {
+	ID        uuid.UUID
+	OrgID     uuid.UUID
+	Name      string
+	Roles     []string
+	CreatedAt time.Time
+	RemovedAt *time.Time
+}
+
 type OutboundTx struct {
 	ID         uuid.UUID
 	Signer     string
@@ -193,6 +258,13 @@ type Outbox struct {
 	CreatedAt      time.Time
 }
 
+type PayerOrg struct {
+	ID                uuid.UUID
+	Name              string
+	ApprovalThreshold money.Amount
+	CreatedAt         time.Time
+}
+
 type Payment struct {
 	ID           uuid.UUID
 	Network      string
@@ -203,7 +275,7 @@ type Payment struct {
 	TokenAddress string
 	FromAddress  string
 	ToAddress    string
-	InvoiceID    uuid.UUID
+	InvoiceID    *uuid.UUID
 	AssetCode    string
 	Amount       money.Amount
 	State        string
@@ -211,6 +283,7 @@ type Payment struct {
 	ConfirmedAt  *time.Time
 	FinalAt      *time.Time
 	ReorgedAt    *time.Time
+	OrgID        *uuid.UUID
 }
 
 type Payout struct {

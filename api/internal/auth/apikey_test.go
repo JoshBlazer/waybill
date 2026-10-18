@@ -52,7 +52,7 @@ func TestAuthenticate(t *testing.T) {
 	}
 
 	got, err := auth.Authenticate(ctx, pool, "Bearer "+k.Full)
-	if err != nil || got != c.ID {
+	if err != nil || got.ContractorID != c.ID || got.IsMember() {
 		t.Fatalf("Authenticate(valid) = %v, %v", got, err)
 	}
 

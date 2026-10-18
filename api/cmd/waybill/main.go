@@ -26,6 +26,7 @@ import (
 	"github.com/JoshBlazer/waybill/api/internal/evm"
 	"github.com/JoshBlazer/waybill/api/internal/httpapi"
 	"github.com/JoshBlazer/waybill/api/internal/invoice"
+	"github.com/JoshBlazer/waybill/api/internal/org"
 	"github.com/JoshBlazer/waybill/api/internal/safety"
 	"github.com/JoshBlazer/waybill/api/internal/store"
 )
@@ -121,6 +122,7 @@ func runAPI(ctx context.Context, log *slog.Logger) error {
 			Resolver: nr.resolver,
 			Paystack: nr.paystack,
 			Checkout: nr.checkout(pool, tokens, cfg.WebURL, log),
+			Org:      &org.Service{Pool: pool, Deployments: deps},
 			Tokens:   tokens,
 			WebURL:   cfg.WebURL,
 

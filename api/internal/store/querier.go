@@ -49,8 +49,12 @@ type Querier interface {
 	GetAccountByCode(ctx context.Context, code string) (GetAccountByCodeRow, error)
 	// Ordered by id: callers that lock accounts must always lock in this order.
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]GetAccountsByIDsRow, error)
+	// A key belongs to a contractor or to an organisation member; a removed
+	// member's keys stop working.
 	GetActiveAPIKey(ctx context.Context, prefix string) (GetActiveAPIKeyRow, error)
 	GetBalance(ctx context.Context, accountID int64) (money.Amount, error)
+	// Zero when the account does not exist yet.
+	GetBalanceByCode(ctx context.Context, code string) (money.Amount, error)
 	// Naira settlement. See ADR-041.
 	// Bank accounts ------------------------------------------------------------
 	GetBankAccount(ctx context.Context, contractorID uuid.UUID) (ContractorBankAccount, error)
@@ -65,8 +69,10 @@ type Querier interface {
 	GetInvoiceTrackingCode(ctx context.Context, id uuid.UUID) (string, error)
 	GetJournalEntry(ctx context.Context, id int64) (GetJournalEntryRow, error)
 	GetJournalEntryByIdempotencyKey(ctx context.Context, idempotencyKey string) (GetJournalEntryByIdempotencyKeyRow, error)
+	GetMember(ctx context.Context, arg GetMemberParams) (OrgMember, error)
 	// Card and bank checkout. See ADR-041.
 	GetOpenCheckout(ctx context.Context, invoiceID uuid.UUID) (Checkout, error)
+	GetOrg(ctx context.Context, id uuid.UUID) (PayerOrg, error)
 	// Outbound transactions --------------------------------------------------
 	GetOutboundTxByRef(ctx context.Context, arg GetOutboundTxByRefParams) (OutboundTx, error)
 	GetPayoutByInvoice(ctx context.Context, invoiceID uuid.UUID) (Payout, error)
@@ -89,6 +95,9 @@ type Querier interface {
 	InsertInvoice(ctx context.Context, arg InsertInvoiceParams) (Invoice, error)
 	InsertInvoiceEvent(ctx context.Context, arg InsertInvoiceEventParams) (InsertInvoiceEventRow, error)
 	InsertJournalEntry(ctx context.Context, arg InsertJournalEntryParams) (InsertJournalEntryRow, error)
+	InsertMember(ctx context.Context, arg InsertMemberParams) (OrgMember, error)
+	InsertMemberAPIKey(ctx context.Context, arg InsertMemberAPIKeyParams) error
+	InsertOrgDepositAddress(ctx context.Context, arg InsertOrgDepositAddressParams) error
 	InsertOutboundAttempt(ctx context.Context, arg InsertOutboundAttemptParams) (OutboundTxAttempt, error)
 	InsertOutboundTx(ctx context.Context, arg InsertOutboundTxParams) (OutboundTx, error)
 	// ON CONFLICT: the same log seen twice is the same payment (I9).
@@ -120,8 +129,10 @@ type Querier interface {
 	ListDueInvoices(ctx context.Context, arg ListDueInvoicesParams) ([]uuid.UUID, error)
 	ListInvoiceEvents(ctx context.Context, invoiceID uuid.UUID) ([]InvoiceEvent, error)
 	ListLivePaymentsByInvoice(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error)
+	ListMembers(ctx context.Context, orgID uuid.UUID) ([]OrgMember, error)
 	ListOpenCheckouts(ctx context.Context) ([]Checkout, error)
 	ListOpenPayments(ctx context.Context, network string) ([]Payment, error)
+	ListOrgDepositAddresses(ctx context.Context, orgID uuid.UUID) ([]DepositAddress, error)
 	ListOutboundAttempts(ctx context.Context, outboundTxID uuid.UUID) ([]OutboundTxAttempt, error)
 	ListPayoutEvents(ctx context.Context, invoiceID uuid.UUID) ([]PayoutEvent, error)
 	ListPendingOutboundTxs(ctx context.Context, arg ListPendingOutboundTxsParams) ([]OutboundTx, error)
@@ -146,6 +157,9 @@ type Querier interface {
 	// Serialises revocations for one contractor, so two concurrent revokes
 	// cannot each see the other key as "still active" and remove both.
 	LockContractorAPIKeys(ctx context.Context, contractorID uuid.UUID) ([]LockContractorAPIKeysRow, error)
+	// Serialises role changes in one organisation, so two concurrent changes
+	// cannot each leave the other as the last admin and remove both.
+	LockOrgMembers(ctx context.Context, orgID uuid.UUID) ([]LockOrgMembersRow, error)
 	LockPayout(ctx context.Context, id uuid.UUID) (Payout, error)
 	// Locks the key's row until the caller's transaction ends. db_now is the
 	// database clock, so lease checks never depend on the caller's clock.
@@ -159,15 +173,20 @@ type Querier interface {
 	Ping(ctx context.Context) (int32, error)
 	PruneChainBlocks(ctx context.Context, arg PruneChainBlocksParams) error
 	PutChainBlock(ctx context.Context, arg PutChainBlockParams) error
+	RemoveMember(ctx context.Context, arg RemoveMemberParams) (OrgMember, error)
 	RetryOutbox(ctx context.Context, arg RetryOutboxParams) (int64, error)
 	RevokeAPIKey(ctx context.Context, id uuid.UUID) error
 	SetBankRecipient(ctx context.Context, arg SetBankRecipientParams) error
 	SetChainCursor(ctx context.Context, arg SetChainCursorParams) error
 	SetCheckoutURL(ctx context.Context, arg SetCheckoutURLParams) (Checkout, error)
+	SetMemberRoles(ctx context.Context, arg SetMemberRolesParams) (OrgMember, error)
+	SetOrgThreshold(ctx context.Context, arg SetOrgThresholdParams) (PayerOrg, error)
 	SetPayoutConversion(ctx context.Context, arg SetPayoutConversionParams) error
 	SetPayoutState(ctx context.Context, arg SetPayoutStateParams) error
 	SetPayoutTransferCode(ctx context.Context, arg SetPayoutTransferCodeParams) error
 	SetSignerNextNonce(ctx context.Context, arg SetSignerNextNonceParams) error
+	// Total of an organisation funding payments in the given states.
+	SumOrgPaymentsByState(ctx context.Context, arg SumOrgPaymentsByStateParams) (money.Amount, error)
 	// Total of an invoice's payments that have reached at least the given state.
 	SumPaymentsByState(ctx context.Context, arg SumPaymentsByStateParams) (money.Amount, error)
 	// Records use at most once a minute per key, so authentication does not
@@ -183,6 +202,10 @@ type Querier interface {
 	UpsertChainToken(ctx context.Context, arg UpsertChainTokenParams) error
 	// Contractors and API keys -----------------------------------------------
 	UpsertContractor(ctx context.Context, arg UpsertContractorParams) (Contractor, error)
+	UpsertMember(ctx context.Context, arg UpsertMemberParams) (OrgMember, error)
+	// Payer organisations, members, funding and contractor wallets
+	// (docs/design/teams.md).
+	UpsertOrg(ctx context.Context, arg UpsertOrgParams) (PayerOrg, error)
 }
 
 var _ Querier = (*Queries)(nil)

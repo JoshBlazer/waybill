@@ -111,8 +111,16 @@ func runWatcher(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
-// devContractorID is the fixed id of the local demo contractor.
-var devContractorID = uuid.MustParse("00000000-0000-4000-8000-00000000d001")
+// Fixed ids of the local demo contractor and the demo organisation.
+var (
+	devContractorID = uuid.MustParse("00000000-0000-4000-8000-00000000d001")
+	devOrgID        = uuid.MustParse("00000000-0000-4000-8000-00000000e001")
+	devAdminID      = uuid.MustParse("00000000-0000-4000-8000-00000000e101")
+	devApproverID   = uuid.MustParse("00000000-0000-4000-8000-00000000e102")
+)
+
+// devOrgThreshold is 500 USDC: runs above it need a second person.
+var devOrgThreshold = money.FromInt64(500_000_000)
 
 // runSeedDev installs the local demo contractor and its API key. It refuses
 // to run unless every configured chain is local Anvil.
@@ -146,11 +154,49 @@ func runSeedDev(ctx context.Context, log *slog.Logger) error {
 		}); err != nil {
 			return err
 		}
-		return q.InsertAPIKey(ctx, store.InsertAPIKeyParams{ContractorID: devContractorID, Prefix: key.Prefix, SecretSha256: key.Hash[:]})
+		if err := q.InsertAPIKey(ctx, store.InsertAPIKeyParams{ContractorID: devContractorID, Prefix: key.Prefix, SecretSha256: key.Hash[:]}); err != nil {
+			return err
+		}
+		return seedDevOrg(ctx, q, cfg.DevAdminKey, cfg.DevApproverKey)
 	})
 	if err != nil {
 		return err
 	}
 	log.Info("seeded demo contractor", "contractor", devContractorID, "keyPrefix", key.Prefix)
+	return nil
+}
+
+// seedDevOrg installs the demo organisation with an admin (who also builds
+// runs) and an approver, so dual approval can be shown. Skipped when the
+// member keys are not configured.
+func seedDevOrg(ctx context.Context, q *store.Queries, adminKey, approverKey string) error {
+	if adminKey == "" && approverKey == "" {
+		return nil
+	}
+	if _, err := q.UpsertOrg(ctx, store.UpsertOrgParams{ID: devOrgID, Name: "Lagoon Labs", ApprovalThreshold: devOrgThreshold}); err != nil {
+		return err
+	}
+	members := []struct {
+		id    uuid.UUID
+		name  string
+		roles []string
+		key   string
+		env   string
+	}{
+		{devAdminID, "Tolu Bakare", []string{"admin", "maker"}, adminKey, "WAYBILL_DEV_ADMIN_KEY"},
+		{devApproverID, "Chidi Eze", []string{"approver"}, approverKey, "WAYBILL_DEV_APPROVER_KEY"},
+	}
+	for _, m := range members {
+		k, err := auth.ParseKey(strings.TrimSpace(m.key))
+		if err != nil {
+			return fmt.Errorf("%s is missing or malformed (want wb_test_<8>_<52>)", m.env)
+		}
+		if _, err := q.UpsertMember(ctx, store.UpsertMemberParams{ID: m.id, OrgID: devOrgID, Name: m.name, Roles: m.roles}); err != nil {
+			return err
+		}
+		if err := q.InsertMemberAPIKey(ctx, store.InsertMemberAPIKeyParams{MemberID: m.id, Prefix: k.Prefix, SecretSha256: k.Hash[:], Name: "demo"}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
