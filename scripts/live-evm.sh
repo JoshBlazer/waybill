@@ -5,6 +5,11 @@
 #   scripts/live-evm.sh        # Ethereum Sepolia (default)
 #   scripts/live-evm.sh 84532  # Base Sepolia
 #
+# A rehearsal against a local fork of the network runs the same steps with no
+# real test ETH (it writes a deployment file for the fork: delete it after):
+#
+#   LIVE_RPCS=http://sepolia-fork:8545 LIVE_HOST_RPC=http://127.0.0.1:58546 scripts/live-evm.sh
+#
 # Runs the thin-slice path against the real network: create an invoice, pay
 # it with mUSDC, wait until it is final and swept into the vault, then
 # reconcile. It deploys the contracts first if the network has no
@@ -34,8 +39,12 @@ case "$CHAIN_ID" in
     EXPLORER="https://sepolia.basescan.org" ;;
   *) echo "live-evm: only 11155111 (Ethereum Sepolia) and 84532 (Base Sepolia) are allowed" >&2; exit 2 ;;
 esac
+# Rehearsal on a local fork (anvil --fork-url): LIVE_RPCS replaces the
+# endpoints the services use, LIVE_HOST_RPC the one cast and forge use here.
+RPCS=${LIVE_RPCS:-$RPCS}
+[ -z "${LIVE_RPCS:-}" ] || EXPLORER="(fork)"
 NETWORK="evm:$CHAIN_ID"
-PRIMARY=${RPCS%%|*}
+PRIMARY=${LIVE_HOST_RPC:-${RPCS%%|*}}
 DB=postgres://waybill:waybill-local-only@postgres:5432/waybill?sslmode=disable
 CURL_IMAGE=curlimages/curl:8.10.1
 say() { printf '\n== %s\n' "$*"; }
