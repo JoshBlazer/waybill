@@ -13,7 +13,7 @@ GENERATED := api/internal/httpapi/api.gen.go api/internal/store web/src/lib/api/
 
 .PHONY: help up down logs gen test test-api test-contracts test-web lint lint-api \
         lint-contracts lint-web check-gen e2e setup secrets budget lighthouse \
-        env fixtures check-fixtures reconcile up-observability up-bitcoin
+        env fixtures check-fixtures reconcile up-observability up-bitcoin live-evm
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-16s\033[0m %s\n", $$1, $$2}'
@@ -61,6 +61,9 @@ env: deploy/.env
 up: env contracts/lib/forge-std/src ## Build and start the local stack; waits until every service is healthy
 	$(COMPOSE) up --build --detach --wait
 	@echo "API: http://localhost:8080/v1/health   Web: http://localhost:3000"
+
+live-evm: ## Live check on Ethereum Sepolia (CHAIN=84532 for Base Sepolia); asks for a throwaway key
+	scripts/live-evm.sh $(or $(CHAIN),11155111)
 
 # Adds a Bitcoin regtest node: BTC invoices, the Bitcoin watcher and the
 # Bitcoin custody check (ADR-045).

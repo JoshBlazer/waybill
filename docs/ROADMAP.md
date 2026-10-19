@@ -90,6 +90,8 @@ Result (2026-10-18): passed. `TestExitCheck_BatchWithDualApprovalCompletes` and 
 
 **Exit check:** the same e2e path passes on Ethereum Sepolia and Bitcoin regtest, and failover is proven by a test that kills the primary RPC.
 
+Result (2026-10-19): not yet passed. Failover (`TestWatcher_SurvivesPrimaryRPCDying`) and Bitcoin regtest (`bitcoin.spec.ts`, then `make reconcile` with 0 differences) pass, locally and in CI. `scripts/live-evm.sh` passes end to end on an Anvil fork of Ethereum Sepolia (settled in 178 s, swept, 0 differences), but has not run on the public network: it needs a throwaway key holding Sepolia test ETH. At `789635a`, `go test ./...` passed 297 tests and skipped 4 live ones; the other 20, in `sweep` and `txmgr`, timed out starting their Postgres container on a loaded machine and passed on a rerun of those two packages. Details in [the stage 5 walkthrough](walkthroughs/stage-5.md#exit-check).
+
 ## Stage 6 — Launch
 
 - [ ] Public demo deployment.

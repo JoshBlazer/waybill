@@ -16,7 +16,7 @@ The code already treats networks as data, so this is mostly operations.
   - *Owner:* the deploy runs in your terminal with a funded throwaway key, which you type into a hidden prompt (`read -rs`), as with the Paystack key. I cannot enter keys or use faucets.
 - **Finality:** the `finalized` tag, which is about 13 minutes on Sepolia. The watcher and the batch sender already support it.
 - **Public RPCs:** two keyless ones, so failover (section 3) has somewhere to go.
-- **The "same e2e path":** `make e2e-live NETWORK=evm:11155111` runs the thin-slice flow against Sepolia:
+- **The "same e2e path":** `make live-evm` (`scripts/live-evm.sh`) runs the thin-slice flow against Sepolia:
   - create an invoice;
   - pay it with mUSDC from the throwaway key;
   - see it confirmed, final and swept;
