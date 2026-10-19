@@ -69,6 +69,8 @@ Result (2026-10-16): passed on `main` at `4b47fce`. `go test ./...` 184 tests, `
 
 **Exit check:** a link is paid and a test-mode naira payout completes end to end, proven by an automated test against Paystack test mode.
 
+Result (2026-10-19): not yet passed. `TestExitCheck_LinkPaidAndNairaPayoutCompletes` passes in every CI run against a fake provider. Against Paystack test mode, the Zenith test account `057 / 0000000000` resolves and a recipient is created, but Paystack refuses the transfer with HTTP 400, "You cannot initiate third party payouts as a starter business". That is a restriction on the Paystack business account; the payout went to `failed` and nothing was sent. Details in [the stage 3 walkthrough](walkthroughs/stage-3.md#exit-check).
+
 ## Stage 4 — Teams
 
 - [x] Payer organisations, members and roles ([design/teams.md](design/teams.md), ADR-043), with funding addresses.
